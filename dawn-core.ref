@@ -1,4 +1,1 @@
-# The dawn-core commit SHA or tag that CI and release builds check out next to this repo.
-# The first line that is not a comment is used. See the README, "Updating dawn-core".
-# TODO: replace "main" with a commit SHA or tag once dawn-core is published; "main" is not reproducible.
-main
+v0.1.0
