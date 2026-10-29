@@ -1,0 +1,240 @@
+// The only module that talks to the Rust backend. Outside Tauri (plain browser during UI
+// work) it falls back to an in-memory mock with the same shape.
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { mockInvoke, mockListen } from "./ipc.mock";
+import type { Settings } from "./settings/defaults";
+
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+export interface ModelInfo {
+  id: string;
+  sources: string[];
+  targets: string[];
+  sizeBytes: number;
+  license: string;
+  attribution: string;
+}
+
+export interface LanguageInfo {
+  code: string;
+  name: string;
+  nativeName: string;
+  /** Quality is known to be unreliable. */
+  beta: boolean;
+  /** Active: shown in the pickers. */
+  installed: boolean;
+  /** All its models are on disk (it may be inactive; activating is instant). */
+  available: boolean;
+  /** Other languages that use the same models, active ones first. */
+  includedWith: string[];
+  /** English: always available. */
+  builtIn: boolean;
+  downloading: boolean;
+  /** What still has to be downloaded; 0 when its models are shared with an installed language. */
+  sizeBytes: number;
+  /** All of its models, installed or not. */
+  totalBytes: number;
+  /** Disk space freed by removing it (models no other installed language needs). */
+  freeableBytes: number;
+  models: ModelInfo[];
+}
+
+export interface PackProgress {
+  code: string;
+  phase: "downloading" | "verifying" | "extracting" | "done" | "cancelled" | "error";
+  done: number;
+  total: number;
+  errorCode: string | null;
+  error: string | null;
+}
+
+/** What quick access hands to the popup. */
+export interface QuickRequest {
+  /** The copied text; null when quick access was opened without a selection. */
+  text: string | null;
+  /** "Replace" can paste the translation back into the source program. */
+  canReplace: boolean;
+  /** "quick" (copied text) or "capture" (recognized from the screen or an image). */
+  kind: "quick" | "capture";
+  problem: OcrProblem | null;
+  /** The program that was in front ("chrome.exe"), when known. */
+  app: string | null;
+}
+
+/** Why text recognition could not give text. */
+export interface OcrProblem {
+  code: "no_text" | "language_missing" | "failed" | "unsupported";
+  /** The capture languages Windows has no recognition for. */
+  languages: string[];
+}
+
+export interface OcrOut {
+  text: string;
+  problem: OcrProblem | null;
+}
+
+export interface OcrStatus {
+  languages: { code: string; engine: "windows" | "none"; tag: string | null }[];
+  windowsTags: string[];
+}
+
+export interface ShortcutCheck {
+  valid: boolean;
+  error: string | null;
+  /** The shortcut written the standard way, e.g. "Ctrl+C C". */
+  canonical: string | null;
+  /** Other Owl-L shortcuts on the same keys. */
+  conflicts: string[];
+  warning: string | null;
+}
+
+/** Partial result streamed while a translation runs. */
+export interface ActivationOffer {
+  /** The language that was just downloaded. */
+  code: string;
+  /** Other languages its models support, not active yet. */
+  languages: string[];
+}
+
+export interface DeactivateResult {
+  /** Models no active language needs any more. */
+  modelIds: string[];
+  freedBytes: number;
+}
+
+export interface TranslateProgress {
+  requestId: number;
+  text: string;
+  /** fast: a quick draft; refine: the final pass replacing it. */
+  pass: "fast" | "refine";
+  done: number;
+  total: number;
+  pivoted: boolean;
+  /** A complete draft is already showing; this pass replaces it quietly. */
+  draftShown: boolean;
+}
+
+/** What language detection found. `code` is set for "ok" (the language may not be installed). */
+export interface DetectResult {
+  status: "ok" | "unsure" | "none";
+  code: string | null;
+}
+
+export interface TranslateResult {
+  text: string;
+  /** The text went through English. */
+  pivoted: boolean;
+}
+
+export interface HistoryEntry {
+  id: number;
+  from: string;
+  to: string;
+  source: string;
+  result: string;
+  /** Unix time in milliseconds. */
+  createdAt: number;
+}
+
+export class IpcError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+async function call<T>(cmd: string, args?: Record<string, unknown> | Uint8Array): Promise<T> {
+  try {
+    return isTauri ? await invoke<T>(cmd, args) : await mockInvoke<T>(cmd, args instanceof Uint8Array ? undefined : args);
+  } catch (e) {
+    const err = e as { code?: string; message?: string };
+    throw new IpcError(err.code ?? "unknown", err.message ?? String(e));
+  }
+}
+
+function on<T>(event: string, handler: (payload: T) => void): Promise<() => void> {
+  return isTauri ? listen<T>(event, (e) => handler(e.payload)) : mockListen(event, handler);
+}
+
+export const ipc = {
+  // Translation. Swap the Rust engine later without touching the UI.
+  translate: (requestId: number, text: string, from: string, to: string) =>
+    call<TranslateResult>("translate", { requestId, text, from, to }),
+  detectLanguage: (text: string) => call<DetectResult>("detect_language", { text }),
+  /** The target to use so that a text is never translated into its own language. */
+  smartTarget: (source: string, target: string) => call<string>("smart_target", { source, target }),
+  captureStart: (hideMain = false) => call<void>("capture_start", { hideMain }),
+  captureCancel: () => call<void>("capture_cancel"),
+  captureFinish: (label: string, rect: number[], viewport: number[]) => call<void>("capture_finish", { label, rect, viewport }),
+  captureOverlayInfo: (label: string) => call<{ imageUrl: string } | null>("capture_overlay_info", { label }),
+  captureOverlayReady: (label: string) => call<void>("capture_overlay_ready", { label }),
+  /** Recognize the text in an encoded image (PNG, JPEG, BMP, WebP, GIF). */
+  ocrImage: (bytes: Uint8Array) => call<OcrOut>("ocr_image", bytes),
+  ocrStatus: () => call<OcrStatus>("ocr_status"),
+  openWindowsLanguageSettings: () => call<void>("open_windows_language_settings"),
+  quickReplace: (text: string) => call<void>("quick_replace", { text }),
+  listLanguages: () => call<LanguageInfo[]>("list_languages"),
+  installLanguage: (code: string) => call<void>("install_language", { code }),
+  cancelInstall: (code: string) => call<void>("cancel_install", { code }),
+  activateLanguage: (code: string) => call<void>("activate_language", { code }),
+  activateLanguages: (codes: string[]) => call<void>("activate_languages", { codes }),
+  deactivateLanguage: (code: string) => call<DeactivateResult>("deactivate_language", { code }),
+  deleteModelFiles: (ids: string[]) => call<number>("delete_model_files", { ids }),
+  takeActivationOffer: () => call<ActivationOffer | null>("take_activation_offer"),
+  /** Delete a language's files and download it again. */
+  repairLanguage: (code: string) => call<void>("repair_language", { code }),
+
+  getSettings: () => call<Settings>("get_settings"),
+  setSettings: (patch: Partial<Settings>) => call<Settings>("set_settings", { patch }),
+
+  historyList: () => call<HistoryEntry[]>("history_list"),
+  historyAdd: (from: string, to: string, source: string, result: string) =>
+    call<void>("history_add", { from, to, source, result }),
+  historyDelete: (id: number) => call<void>("history_delete", { id }),
+  historyClear: () => call<void>("history_clear"),
+
+  openSettings: (page?: string) => call<void>("open_settings", { page }),
+  /** The page the settings window should start on, if one was requested. */
+  takeSettingsPage: () => call<string | null>("take_settings_page"),
+  quit: () => call<void>("quit_app"),
+  /** Adds a timestamped line to the backend trace when DAWN_TRACE is set. */
+  trace: (msg: string) => call<void>("trace", { msg }),
+  setTrayLanguage: (lang: string) => call<void>("set_tray_language", { lang }),
+  closeAction: (action: "background" | "quit", remember: boolean) =>
+    call<void>("close_action", { action, remember }),
+
+  checkShortcut: (name: "translate" | "capture", text: string) => call<ShortcutCheck>("check_shortcut", { name, text }),
+  /** Why the global shortcuts could not start, if they could not. */
+  hotkeyStatus: () => call<string | null>("hotkey_status"),
+  quickTake: () => call<QuickRequest | null>("quick_take"),
+  quickHide: () => call<void>("quick_hide"),
+  quickSetPinned: (pinned: boolean) => call<void>("quick_set_pinned", { pinned }),
+  quickOpenInMain: (text: string) => call<void>("quick_open_in_main", { text }),
+  quickBlockApp: (name: string) => call<void>("quick_block_app", { name }),
+  takeQuickText: () => call<string | null>("take_quick_text"),
+
+  /** Where the maximize button is (physical pixels), so Windows can show Snap Layouts for it. */
+  setMaximizeRect: (rect: [number, number, number, number]) => call<void>("set_maximize_rect", { rect }),
+  onMaximizeHover: (cb: (hovering: boolean) => void) => on<boolean>("maximize-hover", cb),
+  onCaptureOpen: (cb: () => void) => on<null>("capture-open", cb),
+  onQuickOpen: (cb: () => void) => on<null>("quick-open", cb),
+  onQuickText: (cb: () => void) => on<null>("quick-text", cb),
+  onSettingsChanged: (cb: (s: Settings) => void) => on<Settings>("settings-changed", cb),
+  onTranslateProgress: (cb: (p: TranslateProgress) => void) => on<TranslateProgress>("translate-progress", cb),
+  onPackProgress: (cb: (p: PackProgress) => void) => on<PackProgress>("pack-progress", cb),
+  onActivationOffer: (cb: () => void) => on<null>("activation-offer", cb),
+  onPacksChanged: (cb: () => void) => on<null>("packs-changed", cb),
+  onHistoryChanged: (cb: () => void) => on<null>("history-changed", cb),
+  onCloseRequested: (cb: () => void) => on<null>("close-requested", cb),
+  onSettingsNavigate: (cb: (page: string) => void) => on<string>("settings-navigate", cb),
+};
+
+/** "main", "settings", "quick" or "overlay-N" (one capture overlay per monitor). */
+export function windowLabel(): string {
+  if (isTauri) return getCurrentWebviewWindow().label;
+  return new URLSearchParams(location.search).get("window") ?? "main";
+}

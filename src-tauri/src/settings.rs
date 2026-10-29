@@ -1,0 +1,133 @@
+//! App settings, persisted as JSON in the Owl-L data folder.
+
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Settings {
+    pub launch_at_start: bool,
+    /// "ask" | "background" | "quit"
+    pub close_behavior: String,
+    /// "popup" | "app"
+    pub quick_access: String,
+    pub ignore_quick_access_without_selection: bool,
+    pub floating_icon: bool,
+    pub translate_shortcut_enabled: bool,
+    pub translate_shortcut: String,
+    pub capture_shortcut_enabled: bool,
+    pub capture_shortcut: String,
+    /// "light" | "dark" | "system"
+    pub theme: String,
+    /// "system" | "en" | "de"
+    pub ui_language: String,
+    /// "ask" or a folder path
+    pub download_location: String,
+    pub keep_history: bool,
+    pub capture_languages: Vec<String>,
+    pub block_list: Vec<String>,
+    pub proxy_enabled: bool,
+    pub proxy_url: String,
+    /// CPU threads per translation model; 0 = automatic (about two thirds of the cores).
+    pub translation_threads: u32,
+    /// Show a quick beam-1 draft first, then replace it with the beam-2 translation.
+    pub two_pass: bool,
+    /// Last used languages ("auto" = detect).
+    pub source_language: String,
+    pub target_language: String,
+    /// The last target the user picked that was not English (for "never translate X to X").
+    pub last_foreign_target: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            launch_at_start: false,
+            close_behavior: "ask".into(),
+            quick_access: "popup".into(),
+            ignore_quick_access_without_selection: false,
+            floating_icon: false,
+            translate_shortcut_enabled: true,
+            translate_shortcut: "Ctrl+C C".into(),
+            capture_shortcut_enabled: true,
+            capture_shortcut: "Ctrl+Shift+O".into(),
+            theme: "system".into(),
+            ui_language: "system".into(),
+            download_location: "ask".into(),
+            keep_history: true,
+            // Empty = automatic: English plus the active languages.
+            capture_languages: vec![],
+            block_list: vec![],
+            proxy_enabled: false,
+            proxy_url: String::new(),
+            translation_threads: 0,
+            two_pass: false,
+            source_language: "auto".into(),
+            target_language: "de".into(),
+            last_foreign_target: "de".into(),
+        }
+    }
+}
+
+impl Settings {
+    pub fn path() -> PathBuf {
+        dawn_core::app_dir("owll").join("settings.json")
+    }
+
+    pub fn load() -> Self {
+        let mut s: Self = dawn_core::read_json(&Self::path());
+        s.migrate();
+        s
+    }
+
+    /// Settings files from before area selection existed carry placeholder values.
+    fn migrate(&mut self) {
+        if !self.capture_shortcut_enabled && self.capture_shortcut == "Ctrl+F8" {
+            self.capture_shortcut_enabled = true;
+            self.capture_shortcut = "Ctrl+Shift+O".into();
+        }
+        if self.capture_languages == ["en"] {
+            self.capture_languages.clear();
+        }
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        dawn_core::write_json(&Self::path(), self)
+    }
+
+    /// Merge a partial JSON object into the settings (unknown keys are ignored).
+    pub fn merge(&mut self, patch: Value) -> Result<(), serde_json::Error> {
+        let mut current = serde_json::to_value(&*self)?;
+        if let (Value::Object(base), Value::Object(extra)) = (&mut current, patch) {
+            base.extend(extra);
+        }
+        *self = serde_json::from_value(current)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_placeholder_capture_settings_are_migrated() {
+        let mut old: Settings = serde_json::from_str(r#"{"captureShortcutEnabled":false,"captureShortcut":"Ctrl+F8","captureLanguages":["en"]}"#).unwrap();
+        old.migrate();
+        assert!(old.capture_shortcut_enabled);
+        assert_eq!(old.capture_shortcut, "Ctrl+Shift+O");
+        assert!(old.capture_languages.is_empty(), "the old default [\"en\"] means automatic");
+    }
+
+    #[test]
+    fn chosen_capture_settings_are_kept() {
+        let mut chosen: Settings =
+            serde_json::from_str(r#"{"captureShortcutEnabled":false,"captureShortcut":"Ctrl+Alt+K","captureLanguages":["de","fr"]}"#).unwrap();
+        chosen.migrate();
+        assert!(!chosen.capture_shortcut_enabled);
+        assert_eq!(chosen.capture_shortcut, "Ctrl+Alt+K");
+        assert_eq!(chosen.capture_languages, ["de", "fr"]);
+    }
+}

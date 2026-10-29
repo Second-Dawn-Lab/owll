@@ -1,0 +1,26 @@
+# Owl-L is its own Cargo workspace. The shared crates come from the sibling dawn-core repository
+# (see src-tauri/Cargo.toml); clone it next to this folder: ../dawn-core
+[workspace]
+resolver = "2"
+members = ["src-tauri"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+
+# Optimize dependencies even in dev builds: hashing, unzipping and tokenizing 65 MB model
+# archives is far too slow unoptimized. Our own crates stay fast to rebuild.
+[profile.dev.package."*"]
+opt-level = 3
+
+# The dawn-core number-crunching crates stay fast in dev builds too (image scaling, BMP conversion).
+[profile.dev.package.dawn-ocr]
+opt-level = 3
+[profile.dev.package.dawn-capture]
+opt-level = 3
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

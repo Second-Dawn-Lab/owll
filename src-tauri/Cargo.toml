@@ -1,0 +1,43 @@
+[package]
+name = "owll"
+description = "Owl-L: offline, lightweight translator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "owll_lib"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+# A second launch focuses the running window instead of starting another tray icon.
+tauri-plugin-single-instance = "2"
+# Reads the copied text for quick access (text only, so no image support is compiled in).
+# "image-data" lets Ctrl+C+C read an image on the clipboard (it is then recognized as text).
+arboard = { version = "3", default-features = false, features = ["image-data"] }
+# Decodes the image files opened in the Images tab (PNG, JPEG, BMP, WebP, GIF).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "webp", "gif"] }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+dawn-core = { path = "../../dawn-core/crates/dawn-core" }
+dawn-capture = { path = "../../dawn-core/crates/dawn-capture" }
+dawn-hotkeys = { path = "../../dawn-core/crates/dawn-hotkeys" }
+dawn-models = { path = "../../dawn-core/crates/dawn-models" }
+dawn-ocr = { path = "../../dawn-core/crates/dawn-ocr" }
+dawn-translate = { path = "../../dawn-core/crates/dawn-translate" }
+
+# Snap Layouts for the custom title bar (see src/titlebar.rs): window hit testing needs Win32.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.61"
+features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+]

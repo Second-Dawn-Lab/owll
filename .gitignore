@@ -1,0 +1,31 @@
+node_modules/
+dist/
+target/
+target-*/
+*.log
+
+
+# Model weights and archives must never be committed
+/models/
+*.bin
+*.onnx
+*.gguf
+tools/convert-models/out/
+tools/convert-models/.venv/
+
+# Secrets, certificates and keys
+.env
+.env.*
+*.pfx
+*.pem
+*.key
+*.p12
+
+# Binaries and archives (only brand PNGs and generated app icons are committed)
+*.exe
+*.dll
+*.msi
+*.zip
+*.tar.gz
+*.7z
+*.safetensors

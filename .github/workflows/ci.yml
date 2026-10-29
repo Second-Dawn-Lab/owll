@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    # windows-latest has Visual Studio and CMake preinstalled, which is all CTranslate2 and oneDNN need.
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      # owll and dawn-core are checked out side by side, as on a developer machine.
+      - uses: actions/checkout@v4
+        with:
+          path: owll
+      - name: Read the pinned dawn-core ref
+        id: ref
+        shell: bash
+        run: echo "ref=$(grep -v '^#' owll/dawn-core.ref | grep -v '^[[:space:]]*$' | head -n1 | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: Second-Dawn-Lab/dawn-core
+          ref: ${{ steps.ref.outputs.ref }}
+          path: dawn-core
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: owll/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      # CTranslate2 and oneDNN (the default backend) take about 13 minutes to compile. rust-cache
+      # keeps their build output keyed on Cargo.lock and the toolchain, so only a cold cache pays that.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: owll
+          shared-key: windows-dnnl
+          cache-on-failure: true
+      - run: pnpm install --frozen-lockfile
+        working-directory: dawn-core
+      - run: pnpm install --frozen-lockfile
+        working-directory: owll
+      - run: pnpm lint
+        working-directory: owll
+      - run: pnpm typecheck
+        working-directory: owll
+      # The Tauri crate embeds the frontend, so it must be built before cargo runs.
+      - run: pnpm build
+        working-directory: owll
+      - run: cargo check --workspace
+        working-directory: owll
+      - run: cargo test --workspace
+        working-directory: owll

@@ -1,0 +1,53 @@
+name: Release
+
+# Push a tag such as v0.1.0 to build the Windows installer and attach it to a GitHub Release.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: owll
+      - name: Read the pinned dawn-core ref
+        id: ref
+        shell: bash
+        run: echo "ref=$(grep -v '^#' owll/dawn-core.ref | grep -v '^[[:space:]]*$' | head -n1 | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: Second-Dawn-Lab/dawn-core
+          ref: ${{ steps.ref.outputs.ref }}
+          path: dawn-core
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: owll/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: owll
+          shared-key: windows-dnnl
+          cache-on-failure: true
+      - run: pnpm install --frozen-lockfile
+        working-directory: dawn-core
+      - run: pnpm install --frozen-lockfile
+        working-directory: owll
+      # TODO (v0.1): code signing. Sign the installer here (certificate in repository secrets).
+      # TODO (v0.1): updater. Configure the Tauri updater plugin and signing key, and publish latest.json.
+      - run: pnpm tauri build --bundles nsis
+        working-directory: owll
+      - name: Attach the installer to the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" owll/target/release/bundle/nsis/*.exe --repo "$GITHUB_REPOSITORY" --title "Owl-L $GITHUB_REF_NAME" --generate-notes

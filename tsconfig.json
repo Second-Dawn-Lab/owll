@@ -1,0 +1,15 @@
+{
+  "extends": "../dawn-core/tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    // The linked @seconddawn/* packages live in ../dawn-core and have their own node_modules;
+    // pin React (and its types) to this app's copy so there is only one of each.
+    "baseUrl": ".",
+    "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}
