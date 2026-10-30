@@ -3,6 +3,13 @@
 All notable changes to Owl-L. The newest version is first. The text of a version's section is used
 as the release notes and shown in the in-app update notice.
 
+## [0.1.1](https://github.com/Second-Dawn-Lab/owll/compare/v0.1.0...v0.1.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* v0.1.1 fixes and capture results in the main window ([cbc5b0d](https://github.com/Second-Dawn-Lab/owll/commit/cbc5b0d04d08024fa18c15ef39d67cdc11c21df6))
+
 ## [0.1.0] - 2026-10-30
 
 First public release.
