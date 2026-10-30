@@ -159,10 +159,10 @@ impl From<dawn_translate::Translation> for TranslateOut {
 
 /// Up to three whole-sentence alternatives for the translation of `input`, different from `current`.
 #[tauri::command]
-pub async fn sentence_alternatives(state: State<'_, AppState>, from: String, to: String, input: String, current: String) -> CmdResult<Vec<String>> {
+pub async fn sentence_alternatives(state: State<'_, AppState>, from: String, to: String, source: String, input: String, current: String) -> CmdResult<Vec<String>> {
     let engine = state.engine.clone();
     let catalog = state.catalog.clone();
-    tauri::async_runtime::spawn_blocking(move || engine.sentence_alternatives(&from, &to, &input, &current, 3))
+    tauri::async_runtime::spawn_blocking(move || engine.sentence_alternatives(&from, &to, &source, &input, &current, 3))
         .await
         .map_err(|e| CmdError::new("engine", e))?
         .map_err(|e| translate_error(&catalog, e))
@@ -180,15 +180,15 @@ pub struct AlternativeOut {
 }
 
 /// Alternatives for the word that starts at UTF-16 offset `word_start` of `sentence` (a segment's `target`;
-/// `input` is its `input`). The current word comes first. Slow the first time (the model is loaded for it),
+/// `source` and `input` are its `source` and `input`). The current word comes first. Slow the first time (the model is loaded for it),
 /// so it runs off the UI thread.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub async fn alternatives(state: State<'_, AppState>, from: String, to: String, input: String, sentence: String, word_start: usize, current: String) -> CmdResult<Vec<AlternativeOut>> {
+pub async fn alternatives(state: State<'_, AppState>, from: String, to: String, source: String, input: String, sentence: String, word_start: usize, current: String) -> CmdResult<Vec<AlternativeOut>> {
     let engine = state.engine.clone();
     let catalog = state.catalog.clone();
     let started = Instant::now();
-    let found = tauri::async_runtime::spawn_blocking(move || engine.alternatives(&from, &to, &input, &sentence, word_start, &current, 10))
+    let found = tauri::async_runtime::spawn_blocking(move || engine.alternatives(&from, &to, &source, &input, &sentence, word_start, &current, 10))
         .await
         .map_err(|e| CmdError::new("engine", e))?
         .map_err(|e| translate_error(&catalog, e))?;

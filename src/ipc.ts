@@ -313,10 +313,11 @@ export const ipc = {
   quickOpenInMain: (text: string) => call<void>("quick_open_in_main", { text }),
   quickBlockApp: (name: string) => call<void>("quick_block_app", { name }),
   takeQuickText: () => call<string | null>("take_quick_text"),
-  alternatives: (from: string, to: string, input: string, sentence: string, wordStart: number, current: string) =>
-    call<Alternative[]>("alternatives", { from, to, input, sentence, wordStart, current }),
+  alternatives: (from: string, to: string, source: string, input: string, sentence: string, wordStart: number, current: string) =>
+    call<Alternative[]>("alternatives", { from, to, source, input, sentence, wordStart, current }),
   /** Up to three whole-sentence alternatives for a sentence, different from the current translation. */
-  sentenceAlternatives: (from: string, to: string, input: string, current: string) => call<string[]>("sentence_alternatives", { from, to, input, current }),
+  sentenceAlternatives: (from: string, to: string, source: string, input: string, current: string) =>
+    call<string[]>("sentence_alternatives", { from, to, source, input, current }),
   pinTranslation: (from: string, to: string, source: string, input: string, translation: string) =>
     void call<void>("pin_translation", { from, to, source, input, translation }),
   glossariesGet: () => call<Glossaries>("glossaries_get"),

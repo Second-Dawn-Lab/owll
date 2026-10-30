@@ -38,10 +38,28 @@ export function ResultText({ text, segments, terms = [], from, to, onPick, dimme
   const listRef = useRef<HTMLUListElement>(null);
   const rootRef = useRef<HTMLSpanElement>(null);
   const request = useRef(0);
+  /** The word the pointer is over, for the glossary tooltip (the keyboard cursor shows it too). */
+  const [hover, setHover] = useState<number | null>(null);
+  const [tip, setTip] = useState<{ text: string; x: number; y: number; below: boolean; arrow: number } | null>(null);
   const enabled = segments.length > 0;
 
   useEffect(() => setPanel(null), [text]);
   useEffect(() => setActive(null), [segments.length]);
+
+  // The glossary tooltip: our own card above (or below) the term, for the pointer and for the keyboard cursor.
+  useEffect(() => {
+    const index = hover ?? (cursor >= 0 ? cursor : null);
+    const term = index === null || panel ? undefined : termAt(terms, words[index]);
+    const rect = index === null ? undefined : rootRef.current?.querySelector<HTMLElement>(`[data-word="${index}"]`)?.getBoundingClientRect();
+    if (!term || !rect) {
+      setTip(null);
+      return;
+    }
+    const center = rect.left + rect.width / 2;
+    const x = Math.max(150, Math.min(center, window.innerWidth - 150));
+    const below = rect.top < 56;
+    setTip({ text: t("gloss.tip", { source: term.source, target: term.target }), x, y: below ? rect.bottom + 8 : rect.top - 8, below, arrow: center - x });
+  }, [hover, cursor, panel, terms, words, t]);
 
   const segmentOf = (word: Word) => segments.findIndex((s) => word.start >= s.start && word.start < s.end);
 
@@ -63,7 +81,7 @@ export function ResultText({ text, segments, terms = [], from, to, onPick, dimme
     setPanel({ kind: "words", word, segment: seg, x, y, items: null, error: false, selected: 0, tab: "alternatives" });
     try {
       const s = segments[seg];
-      const items = await ipc.alternatives(from, to, s.input, s.target, word.start - s.start, word.text);
+      const items = await ipc.alternatives(from, to, s.source, s.input, s.target, word.start - s.start, word.text);
       // The first item is the current word: start on the next one, there is nothing to choose in the first.
       if (id === request.current) setPanel((p) => (p && p.kind === "words" ? { ...p, items, selected: items.length > 1 ? 1 : 0 } : p));
     } catch {
@@ -155,7 +173,7 @@ export function ResultText({ text, segments, terms = [], from, to, onPick, dimme
     let stale = false;
     const timer = setTimeout(() => {
       void ipc
-        .sentenceAlternatives(from, to, s.input, s.target)
+        .sentenceAlternatives(from, to, s.source, s.input, s.target)
         .then((list) => !stale && setSentences(list))
         .catch(() => undefined);
     }, 350);
@@ -185,7 +203,9 @@ export function ResultText({ text, segments, terms = [], from, to, onPick, dimme
         key={i}
         data-word={i}
         className={`word${i === cursor ? " word--cursor" : ""}${pinned ? " word--pinned" : ""}${term ? " word--term" : ""}`}
-        title={term ? t("gloss.tip", { source: term.source, target: term.target }) : undefined}
+        title={term ? undefined : t("alt.hint")}
+        onMouseEnter={() => setHover(i)}
+        onMouseLeave={() => setHover((h) => (h === i ? null : h))}
         onClick={(e) => void show(i, e.currentTarget.getBoundingClientRect())}
       >
         {w.text}
@@ -196,20 +216,29 @@ export function ResultText({ text, segments, terms = [], from, to, onPick, dimme
   if (at < text.length) parts.push(text.slice(at));
 
   return (
-    <>
+    <div className="result">
       <span
+        className="result__text"
         ref={rootRef}
-        className={dimmed ? "pane__stale" : undefined}
+        data-stale={dimmed ? "" : undefined}
         tabIndex={0}
         role="group"
         aria-label={t("alt.hint")}
-        title={t("alt.hint")}
         onKeyDown={onKeyDown}
         onBlur={(e) => {
           if (!panelRef.current?.contains(e.relatedTarget as Node)) setCursor(-1);
         }}
       >
         {parts}
+        {tip && (
+          <span
+            role="tooltip"
+            className={`tip${tip.below ? " tip--below" : ""}`}
+            style={{ left: tip.x, top: tip.y, ["--tip-arrow" as string]: `${tip.arrow}px` }}
+          >
+            {tip.text}
+          </span>
+        )}
         {panel?.kind === "term" && (
           <div ref={panelRef} className="alts alts--term" role="dialog" aria-label={t("gloss.entryTitle")} style={{ left: panel.x, top: panel.y }}>
             <div className="alts__head">
@@ -266,7 +295,7 @@ export function ResultText({ text, segments, terms = [], from, to, onPick, dimme
         )}
       </span>
       {sentenceAlternatives && sentences.length > 0 && (
-        <div className="sentalts">
+        <div className="sentalts" data-stale={dimmed ? "" : undefined}>
           <div className="sentalts__title">{t("alt.sentences")}</div>
           {sentences.map((s) => (
             <button key={s} type="button" className="sentalts__item" onClick={() => pickSentence(s)}>
@@ -275,6 +304,6 @@ export function ResultText({ text, segments, terms = [], from, to, onPick, dimme
           ))}
         </div>
       )}
-    </>
+    </div>
   );
 }

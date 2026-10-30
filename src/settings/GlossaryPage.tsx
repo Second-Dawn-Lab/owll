@@ -1,5 +1,5 @@
 import { useSettings } from "@seconddawn/settings";
-import { Button, Checkbox, Dialog, Icon, IconButton, Menu, Row, Section, Switch, type MenuEntry } from "@seconddawn/ui";
+import { Button, Checkbox, Dialog, IconButton, Menu, Row, Section, Switch, type MenuEntry } from "@seconddawn/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dropdown } from "../components/Dropdown";
 import { usePacks } from "../components/usePacks";
@@ -7,6 +7,34 @@ import { languageName, useT } from "../i18n";
 import { ipc, type GlossaryEntry, type Glossaries } from "../ipc";
 import { settingsStore } from "./store";
 import { entriesToAdd, entryValid, filterEntries, groupByPair, newEntry, nextListName } from "./glossaryList";
+
+/** A full-width, wrapping text field for a term or phrase: it grows with its text; Enter submits, never a line break. */
+function TermInput({ value, label, onChange, onEnter }: { value: string; label: string; onChange: (value: string) => void; onEnter?: () => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      className="gloss__input"
+      value={value}
+      placeholder={label}
+      aria-label={label}
+      onChange={(e) => onChange(e.target.value.replace(/[\r\n]+/g, " "))}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (!e.shiftKey) onEnter?.();
+        }
+      }}
+    />
+  );
+}
 
 /**
  * Settings, Glossary: several named glossaries, each a list of terms with the way they must be translated.
@@ -95,7 +123,7 @@ export function GlossaryPage() {
   return (
     <>
       <Section>
-        <div className="gloss__head">
+        <div className="gloss__head dw-row">
           <Dropdown
             value={selected}
             label={t("gloss.lists")}
@@ -120,73 +148,75 @@ export function GlossaryPage() {
       {list && (
         <>
           <Section title={draft.id ? t("gloss.edit") : t("gloss.add")}>
-            <div className="gloss__add">
-              <div className="gloss__term">
+            <div className="gloss__pad">
+              <div className="gloss__field">
                 <Dropdown compact value={draft.from} label={t("lang.source")} options={languages} onChange={(c) => setDraft({ ...draft, from: c })} />
-                <input value={draft.source} placeholder={t("gloss.source")} aria-label={t("gloss.source")} onChange={(e) => setDraft({ ...draft, source: e.target.value })} />
+                <TermInput value={draft.source} label={t("gloss.source")} onChange={(v) => setDraft({ ...draft, source: v })} />
               </div>
-              <span aria-hidden="true">{"→"}</span>
-              <div className="gloss__term">
+              <div className="gloss__field">
                 <Dropdown compact value={draft.to} label={t("lang.target")} options={languages} onChange={(c) => setDraft({ ...draft, to: c })} />
-                <input value={draft.target} placeholder={t("gloss.target")} aria-label={t("gloss.target")} onChange={(e) => setDraft({ ...draft, target: e.target.value })} onKeyDown={(e) => e.key === "Enter" && void submit()} />
+                <TermInput value={draft.target} label={t("gloss.target")} onChange={(v) => setDraft({ ...draft, target: v })} onEnter={() => void submit()} />
               </div>
-              <IconButton icon="check" label={draft.id ? t("gloss.save") : t("gloss.addButton")} disabled={!entryValid(draft)} onClick={() => void submit()} />
-              {draft.id !== 0 && <IconButton icon="close" label={t("common.cancel")} onClick={() => setDraft(newEntry(draft.from, draft.to))} />}
+              <div className="gloss__options">
+                {!draft.id && (
+                  <Checkbox checked={both} onChange={setBoth}>
+                    {t("gloss.both")}
+                  </Checkbox>
+                )}
+                <Checkbox checked={draft.matchCase} onChange={(v) => setDraft({ ...draft, matchCase: v })}>
+                  {t("gloss.matchCase")}
+                </Checkbox>
+                <Checkbox checked={draft.wholeWord} onChange={(v) => setDraft({ ...draft, wholeWord: v })}>
+                  {t("gloss.wholeWord")}
+                </Checkbox>
+              </div>
+              <div className="gloss__actions">
+                <span className="gloss__note">{t("gloss.limit")}</span>
+                {draft.id !== 0 && <Button onClick={() => setDraft(newEntry(draft.from, draft.to))}>{t("common.cancel")}</Button>}
+                <Button variant="primary" disabled={!entryValid(draft)} onClick={() => void submit()}>
+                  {draft.id ? t("gloss.save") : t("gloss.addButton")}
+                </Button>
+              </div>
             </div>
-            {!draft.id && (
-              <Checkbox checked={both} onChange={setBoth}>
-                {t("gloss.both")}
-              </Checkbox>
-            )}
-            <details className="gloss__options">
-              <summary>{t("gloss.options")}</summary>
-              <Checkbox checked={draft.matchCase} onChange={(v) => setDraft({ ...draft, matchCase: v })}>
-                {t("gloss.matchCase")}
-              </Checkbox>
-              <Checkbox checked={draft.wholeWord} onChange={(v) => setDraft({ ...draft, wholeWord: v })}>
-                {t("gloss.wholeWord")}
-              </Checkbox>
-            </details>
-            <p className="gloss__note">{t("gloss.limit")}</p>
           </Section>
 
           <Section title={t("gloss.list", { count: list.entries.length })}>
-            <div className="gloss__tools">
-              <input type="search" value={query} placeholder={t("gloss.search")} aria-label={t("gloss.search")} onChange={(e) => setQuery(e.target.value)} />
-              <input ref={file} type="file" accept=".csv,text/csv" hidden onChange={(e) => void importFile(e.target.files)} />
-              <Button icon="folder" onClick={() => file.current?.click()}>
-                {t("gloss.import")}
-              </Button>
-              <Button icon="download" disabled={list.entries.length === 0} onClick={() => void exportFile()}>
-                {t("gloss.export")}
-              </Button>
-            </div>
-            {message && <p className="gloss__note">{message}</p>}
-            {groups.length === 0 && <p className="gloss__note">{list.entries.length === 0 ? t("gloss.empty") : t("gloss.noMatch")}</p>}
-            {groups.map((g) => (
-              <div key={`${g.from}>${g.to}`} className="gloss__group">
-                <h3 className="gloss__pairname">
-                  {nameOf(g.from)} <Icon name="chevron" size={12} className="gloss__arrow" /> {nameOf(g.to)}
-                </h3>
-                <ul className="gloss__list">
-                  {g.entries.map((e) => (
-                    <li key={e.id} className={e.enabled ? "" : "gloss__off"}>
-                      <Switch label={t("gloss.entryOn")} checked={e.enabled} onChange={(v) => void saveEntries(list.entries.map((x) => (x.id === e.id ? { ...x, enabled: v } : x)))} />
-                      <span className="gloss__terms">
-                        <strong>{e.source}</strong> {"→"} <strong>{e.target}</strong>
-                        {(e.matchCase || !e.wholeWord) && (
-                          <span className="gloss__pair">
-                            {[e.matchCase ? t("gloss.matchCase") : "", e.wholeWord ? "" : t("gloss.partial")].filter(Boolean).join(" · ")}
-                          </span>
-                        )}
-                      </span>
-                      <IconButton icon="pencil" label={t("gloss.editButton")} onClick={() => setDraft(e)} />
-                      <IconButton icon="trash" label={t("gloss.delete")} onClick={() => void saveEntries(list.entries.filter((x) => x.id !== e.id))} />
-                    </li>
-                  ))}
-                </ul>
+            <div className="gloss__pad">
+              <div className="gloss__tools">
+                <input type="search" value={query} placeholder={t("gloss.search")} aria-label={t("gloss.search")} onChange={(e) => setQuery(e.target.value)} />
+                <input ref={file} type="file" accept=".csv,text/csv" hidden onChange={(e) => void importFile(e.target.files)} />
+                <Button icon="folder" onClick={() => file.current?.click()}>
+                  {t("gloss.import")}
+                </Button>
+                <Button icon="download" disabled={list.entries.length === 0} onClick={() => void exportFile()}>
+                  {t("gloss.export")}
+                </Button>
               </div>
-            ))}
+              {message && <p className="gloss__note">{message}</p>}
+              {groups.length === 0 && <p className="gloss__note">{list.entries.length === 0 ? t("gloss.empty") : t("gloss.noMatch")}</p>}
+              {groups.map((g) => (
+                <div key={`${g.from}>${g.to}`} className="gloss__group">
+                  <h4 className="gloss__pairname">
+                    {nameOf(g.from)} {"\u2192"} {nameOf(g.to)}
+                  </h4>
+                  <ul className="gloss__list">
+                    {g.entries.map((e) => (
+                      <li key={e.id} className={e.enabled ? "" : "gloss__off"}>
+                        <Switch label={t("gloss.entryOn")} checked={e.enabled} onChange={(v) => void saveEntries(list.entries.map((x) => (x.id === e.id ? { ...x, enabled: v } : x)))} />
+                        <span className="gloss__terms">
+                          <strong>{e.source}</strong> {"\u2192"} <strong>{e.target}</strong>
+                          {(e.matchCase || !e.wholeWord) && (
+                            <span className="gloss__pair">{[e.matchCase ? t("gloss.matchCase") : "", e.wholeWord ? "" : t("gloss.partial")].filter(Boolean).join(" \u00b7 ")}</span>
+                          )}
+                        </span>
+                        <IconButton icon="pencil" label={t("gloss.editButton")} onClick={() => setDraft(e)} />
+                        <IconButton icon="trash" label={t("gloss.delete")} onClick={() => void saveEntries(list.entries.filter((x) => x.id !== e.id))} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </Section>
         </>
       )}

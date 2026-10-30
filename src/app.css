@@ -971,13 +971,20 @@ html:has(.cap) #root {
   color: var(--dw-text-2);
   font-size: 0.9em;
 }
-.gloss__tools {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
 .gloss__tools input[type="search"] {
   flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--dw-border);
+  border-radius: 8px;
+  background: var(--dw-surface);
+  color: inherit;
+  font: inherit;
+}
+.gloss__tools input[type="search"]:focus {
+  outline: none;
+  border-color: var(--dw-brand);
 }
 .gloss__list {
   margin: 0;
@@ -998,9 +1005,11 @@ html:has(.cap) #root {
 }
 .gloss__terms {
   flex: 1;
-  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .gloss__pair {
+  margin-inline-start: 8px;
   color: var(--dw-text-2);
   font-size: 0.85em;
 }
@@ -1335,29 +1344,50 @@ html:has(.cap) #root {
   flex: 1;
   min-width: 0;
 }
+.result {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.result__text {
+  display: block;
+}
+.result [data-stale] {
+  opacity: 0.45;
+}
+/* Sentence alternatives sit at the bottom of the result pane, apart from the translation */
 .sentalts {
   display: grid;
-  gap: 4px;
-  margin-top: 12px;
-  padding-top: 8px;
+  gap: 2px;
+  margin-top: auto;
+  padding-top: 12px;
   border-top: 1px solid var(--dw-border);
 }
+.result__text {
+  padding-bottom: 40px;
+}
 .sentalts__title {
-  color: var(--dw-text-2);
-  font-size: 0.85em;
+  margin-bottom: 4px;
+  color: var(--dw-text-3);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 .sentalts__item {
-  padding: 6px 8px;
+  padding: 5px 8px;
+  margin-inline: -8px;
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: inherit;
+  color: var(--dw-text-2);
   font: inherit;
+  font-size: 14px;
   text-align: start;
   cursor: pointer;
 }
 .sentalts__item:hover {
   background: var(--dw-brand-soft);
+  color: var(--dw-text);
 }
 .files__skip {
   display: inline-flex;
@@ -1368,43 +1398,66 @@ html:has(.cap) #root {
 }
 
 /* Glossary page */
-.gloss__head {
-  display: flex;
-  align-items: center;
+.gloss__head.dw-row {
+  justify-content: flex-start;
   gap: 8px;
 }
 .gloss__headspacer {
   flex: 1;
 }
-.gloss__add {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.gloss__pad {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
 }
-.gloss__term {
-  display: flex;
-  flex: 1;
-  min-width: 200px;
-  align-items: center;
-  gap: 6px;
+.gloss__field {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  align-items: start;
+  gap: 10px;
 }
-.gloss__term input,
-.gloss__tools input[type="search"] {
-  flex: 1;
+.gloss__field .dropdown {
+  width: 100%;
   min-width: 0;
-  height: 32px;
-  padding: 0 10px;
+  height: 36px;
+}
+.gloss__input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  max-height: 160px;
+  padding: 7px 10px;
   border: 1px solid var(--dw-border);
   border-radius: 8px;
   background: var(--dw-surface);
   color: inherit;
   font: inherit;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
 }
-.gloss__options summary {
-  cursor: pointer;
-  color: var(--dw-text-2);
-  margin: 8px 0 4px;
+.gloss__input:focus {
+  outline: none;
+  border-color: var(--dw-brand);
+}
+.gloss__options {
+  display: grid;
+  gap: 10px;
+}
+.gloss__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.gloss__actions .gloss__note {
+  flex: 1;
+  margin: 0;
+}
+.gloss__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .gloss__group {
   margin-top: 12px;
@@ -1418,6 +1471,39 @@ html:has(.cap) #root {
   font-weight: 600;
   color: var(--dw-text-2);
 }
-.gloss__arrow {
-  opacity: 0.7;
+
+/* Our own tooltip (glossary terms): a themed card with an arrow, above the word or below it near the top edge */
+.tip {
+  position: fixed;
+  z-index: 60;
+  max-width: 300px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--dw-brand);
+  color: var(--dw-on-brand, #fff);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: var(--dw-shadow-pop);
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+.tip--below {
+  transform: translate(-50%, 0);
+}
+.tip::after {
+  content: "";
+  position: absolute;
+  left: calc(50% + var(--tip-arrow, 0px));
+  top: 100%;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top-color: var(--dw-brand);
+}
+.tip--below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--dw-brand);
 }
