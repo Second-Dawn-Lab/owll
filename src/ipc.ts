@@ -76,6 +76,8 @@ export interface CaptureResult {
   imageUrl: string;
   text: string;
   problem: OcrProblem | null;
+  /** The language the text was read with, when it was one language. */
+  ocrLanguage: string | null;
 }
 
 export interface OcrOut {
@@ -134,6 +136,68 @@ export interface TranslateResult {
   text: string;
   /** The text went through English. */
   pivoted: boolean;
+  /** The translated sentences, for word alternatives (empty when there is nothing to pick from). */
+  segments: SegmentInfo[];
+  /** How many glossary terms were put into the text. */
+  glossaryHits: number;
+}
+
+/** One translated sentence and where it sits in the result (UTF-16 offsets). */
+export interface SegmentInfo {
+  source: string;
+  /** What the last model stage read. */
+  input: string;
+  target: string;
+  start: number;
+  end: number;
+  /** The user picked this sentence from the alternatives. */
+  pinned: boolean;
+}
+
+export interface Alternative {
+  word: string;
+  /** The whole sentence with this word. */
+  text: string;
+}
+
+export interface GlossaryEntry {
+  id: number;
+  from: string;
+  to: string;
+  source: string;
+  target: string;
+  matchCase: boolean;
+  wholeWord: boolean;
+  enabled: boolean;
+}
+
+export interface Glossary {
+  enabled: boolean;
+  entries: GlossaryEntry[];
+}
+
+export interface DocInfo {
+  path: string;
+  name: string;
+  kind: "docx" | "pptx" | "xlsx" | "txt" | "markdown" | "pdf";
+  sizeBytes: number;
+  detection: "ok" | "unsure" | "none";
+  detected: string | null;
+  tooLarge: boolean;
+}
+
+export interface DocDone {
+  output: string;
+  kind: DocInfo["kind"];
+  units: number;
+  translated: number;
+  parts: [number, string] | null;
+  skipped: string[];
+}
+
+export interface DocFailed {
+  code: string;
+  message: string;
 }
 
 export interface HistoryEntry {
@@ -155,9 +219,9 @@ export class IpcError extends Error {
   }
 }
 
-async function call<T>(cmd: string, args?: Record<string, unknown> | Uint8Array): Promise<T> {
+async function call<T>(cmd: string, args?: Record<string, unknown> | Uint8Array, headers?: Record<string, string>): Promise<T> {
   try {
-    return isTauri ? await invoke<T>(cmd, args) : await mockInvoke<T>(cmd, args instanceof Uint8Array ? undefined : args);
+    return isTauri ? await invoke<T>(cmd, args, headers ? { headers } : undefined) : await mockInvoke<T>(cmd, args instanceof Uint8Array ? undefined : args);
   } catch (e) {
     const err = e as { code?: string; message?: string };
     throw new IpcError(err.code ?? "unknown", err.message ?? String(e));
@@ -181,7 +245,10 @@ export const ipc = {
   captureOverlayInfo: (label: string) => call<{ imageUrl: string } | null>("capture_overlay_info", { label }),
   captureOverlayReady: (label: string) => call<void>("capture_overlay_ready", { label }),
   /** Recognize the text in an encoded image (PNG, JPEG, BMP, WebP, GIF). */
-  ocrImage: (bytes: Uint8Array) => call<OcrOut>("ocr_image", bytes),
+  /** Recognize the text in an image; `language` is the source language the user picked ("auto" or none: the capture languages). */
+  ocrImage: (bytes: Uint8Array, language?: string) => call<OcrOut>("ocr_image", bytes, language && language !== "auto" ? { "x-ocr-language": language } : undefined),
+  /** Read the last area capture again with another source language (no new screenshot). */
+  ocrCaptureAgain: (language: string) => call<OcrOut>("ocr_capture_again", { language }),
   ocrStatus: () => call<OcrStatus>("ocr_status"),
   openWindowsLanguageSettings: () => call<void>("open_windows_language_settings"),
   quickReplace: (text: string) => call<void>("quick_replace", { text }),
@@ -224,6 +291,24 @@ export const ipc = {
   quickOpenInMain: (text: string) => call<void>("quick_open_in_main", { text }),
   quickBlockApp: (name: string) => call<void>("quick_block_app", { name }),
   takeQuickText: () => call<string | null>("take_quick_text"),
+  alternatives: (from: string, to: string, input: string, prefix: string, current: string) => call<Alternative[]>("alternatives", { from, to, input, prefix, current }),
+  pinTranslation: (from: string, to: string, source: string, input: string, translation: string) =>
+    void call<void>("pin_translation", { from, to, source, input, translation }),
+  glossaryGet: () => call<Glossary>("glossary_get"),
+  glossarySet: (glossary: Glossary) => call<Glossary>("glossary_set", { glossary }),
+  glossaryImportCsv: (text: string, from: string, to: string) => call<{ added: number; updated: number; skipped: number; glossary: Glossary }>("glossary_import_csv", { text, from, to }),
+  glossaryExportCsv: () => call<string>("glossary_export_csv"),
+  glossaryClear: () => call<Glossary>("glossary_clear"),
+  docInspect: (path: string) => call<DocInfo>("doc_inspect", { path }),
+  docDefaultOutput: (path: string, to: string) => call<string>("doc_default_output", { path, to }),
+  docTranslate: (path: string, from: string, to: string, output: string) => call<void>("doc_translate", { path, from, to, output }),
+  docCancel: () => call<void>("doc_cancel"),
+  docOpen: (path: string) => call<void>("doc_open", { path }),
+  docShowInFolder: (path: string) => call<void>("doc_show_in_folder", { path }),
+  readDroppedFile: async (path: string): Promise<Uint8Array> => (isTauri ? new Uint8Array(await invoke<ArrayBuffer>("read_dropped_file", { path })) : new Uint8Array()),
+  onDocProgress: (cb: (p: { done: number; total: number }) => void) => on<{ done: number; total: number }>("doc-progress", cb),
+  onDocDone: (cb: (d: DocDone) => void) => on<DocDone>("doc-done", cb),
+  onDocFailed: (cb: (d: DocFailed) => void) => on<DocFailed>("doc-failed", cb),
   takeCaptureResult: (lastSeen: number | null) => call<CaptureResult | null>("take_capture_result", { lastSeen }),
 
   /** Where the maximize button is (physical pixels), so Windows can show Snap Layouts for it. */

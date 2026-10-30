@@ -311,6 +311,7 @@ export function AdvancedPage() {
   const { t } = useT();
   const { settings, patch } = useAppSettings();
   const [confirm, setConfirm] = useState(false);
+  const [clearGlossary, setClearGlossary] = useState(false);
   const cores = navigator.hardwareConcurrency || 4;
   const autoThreads = Math.max(2, Math.floor((cores * 2) / 3));
   return (
@@ -389,6 +390,8 @@ export function AdvancedPage() {
               variant="primary"
               onClick={() => {
                 void settingsStore.patch(defaultSettings);
+                if (clearGlossary) void ipc.glossaryClear();
+                setClearGlossary(false);
                 setConfirm(false);
               }}
             >
@@ -398,6 +401,9 @@ export function AdvancedPage() {
         }
       >
         <p>{t("adv.resetConfirmBody")}</p>
+        <Checkbox checked={clearGlossary} onChange={setClearGlossary}>
+          {t("adv.resetGlossary")}
+        </Checkbox>
       </Dialog>
     </>
   );

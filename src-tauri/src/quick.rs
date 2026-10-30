@@ -277,7 +277,7 @@ pub fn hotkey_status(quick: State<'_, Quick>) -> Option<String> {
 fn on_hotkey(app: &AppHandle, name: &str, outcome: Outcome) {
     if name == CAPTURE {
         if outcome == Outcome::Fired {
-            crate::capture::start(app);
+            crate::capture::start_from_shortcut(app);
         }
         return;
     }

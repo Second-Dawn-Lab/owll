@@ -19,6 +19,8 @@ tauri-plugin-single-instance = "2"
 # Update checks against the latest GitHub release, and the restart after installing one.
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# The "Save as" and "Choose file" dialogs of the Files tab (document translation).
+tauri-plugin-dialog = "2"
 # Reads the copied text for quick access (text only, so no image support is compiled in).
 # "image-data" lets Ctrl+C+C read an image on the clipboard (it is then recognized as text).
 arboard = { version = "3", default-features = false, features = ["image-data"] }
@@ -28,6 +30,7 @@ serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 dawn-core = { path = "../../dawn-core/crates/dawn-core" }
+dawn-docs = { path = "../../dawn-core/crates/dawn-docs" }
 dawn-capture = { path = "../../dawn-core/crates/dawn-capture" }
 dawn-hotkeys = { path = "../../dawn-core/crates/dawn-hotkeys" }
 dawn-models = { path = "../../dawn-core/crates/dawn-models" }

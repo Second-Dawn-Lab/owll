@@ -22,7 +22,7 @@
         "visible": false,
         "decorations": false,
         "shadow": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": true
       },
       {
         "label": "quick",

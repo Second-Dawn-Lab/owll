@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { applyPick } from "./resultWords";
+import type { SegmentInfo } from "../ipc";
 import { ipc, IpcError } from "../ipc";
 import { trace } from "../trace";
 
@@ -24,7 +26,17 @@ export interface TranslatorState {
   /** The text went through English (from -> en -> to). */
   pivoted: boolean;
   error: IpcError | null;
+  /** The translated sentences of a finished translation, for word alternatives. */
+  segments: SegmentInfo[];
+  /** Glossary terms that were put into the result. */
+  glossaryHits: number;
 }
+
+/** The state plus what the result pane can do with it. */
+export type Translator = TranslatorState & {
+  /** The user picked an alternative for sentence `segment`: show it (the backend remembers the choice). */
+  pick: (segment: number, sentence: string) => void;
+};
 
 export interface TranslatorOptions {
   /** Wait this long after the text changed before translating. */
@@ -47,6 +59,8 @@ const IDLE: TranslatorState = {
   effectiveTo: null,
   pivoted: false,
   error: null,
+  segments: [],
+  glossaryHits: 0,
 };
 
 let nextRequestId = 1;
@@ -57,7 +71,7 @@ let nextRequestId = 1;
  * A newer request makes the backend drop the older one.
  * TODO (later): word alternatives plug in here.
  */
-export function useTranslator(text: string, from: string, to: string, epoch: number, options: TranslatorOptions = {}): TranslatorState {
+export function useTranslator(text: string, from: string, to: string, epoch: number, options: TranslatorOptions = {}): Translator {
   const { debounceMs = DEBOUNCE_MS } = options;
   const [state, setState] = useState<TranslatorState>(IDLE);
   /** The request whose progress events are accepted; 0 when none. */
@@ -86,6 +100,8 @@ export function useTranslator(text: string, from: string, to: string, epoch: num
         refining: quiet && !(p.pass === "refine" && complete),
         pivoted: p.pivoted,
         error: null,
+        segments: [],
+        glossaryHits: 0,
       }));
     });
     return () => void unlisten.then((fn) => fn());
@@ -135,13 +151,13 @@ export function useTranslator(text: string, from: string, to: string, epoch: num
         const out = await ipc.translate(id, text, source, target);
         trace(`translate #${id} returned (${out.text.length} chars, superseded: ${cancelled})`);
         if (!cancelled) {
-          setState({ status: "done", result: out.text, fresh: true, refining: false, detected, resolvedFrom: source, effectiveTo: target, pivoted: out.pivoted, error: null });
+          setState({ status: "done", result: out.text, fresh: true, refining: false, detected, resolvedFrom: source, effectiveTo: target, pivoted: out.pivoted, error: null, segments: out.segments ?? [], glossaryHits: out.glossaryHits ?? 0 });
         }
       } catch (e) {
         const error = e instanceof IpcError ? e : new IpcError("unknown", String(e));
         // A newer request replaced this one in the backend; the newer result is on its way.
         if (!cancelled && error.code !== "cancelled") {
-          setState({ status: "error", result: "", fresh: false, refining: false, detected, resolvedFrom: source, effectiveTo: target, pivoted: false, error });
+          setState({ status: "error", result: "", fresh: false, refining: false, detected, resolvedFrom: source, effectiveTo: target, pivoted: false, error, segments: [], glossaryHits: 0 });
         }
       }
     };
@@ -157,5 +173,12 @@ export function useTranslator(text: string, from: string, to: string, epoch: num
     };
   }, [text, from, to, epoch, debounceMs]);
 
-  return state;
+  const pick = useCallback((segment: number, sentence: string) => {
+    setState((s) => {
+      const out = applyPick(s.result, s.segments, segment, sentence);
+      return { ...s, result: out.text, segments: out.segments };
+    });
+  }, []);
+
+  return { ...state, pick };
 }

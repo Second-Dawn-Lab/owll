@@ -7,12 +7,13 @@ import { settingsStore } from "../settings/store";
 import { CopyButton } from "./CopyButton";
 import { DetectionNotice } from "./DetectionNotice";
 import { LanguagePicker } from "./LanguagePicker";
+import { ResultText } from "./ResultText";
 import { ocrProblemText } from "./packText";
 import { usePacks } from "./usePacks";
 import { useTranslator } from "./useTranslator";
 
 /** Translate the text in an image: dropped, opened, pasted, or captured from the screen. */
-export function ImagesTab({ captured }: { captured?: CaptureResult | null }) {
+export function ImagesTab({ captured, dropped }: { captured?: CaptureResult | null; dropped?: { path: string; n: number } | null }) {
   const { t, locale } = useT();
   const { settings, patch } = useSettings(settingsStore);
   const packs = usePacks();
@@ -25,7 +26,10 @@ export function ImagesTab({ captured }: { captured?: CaptureResult | null }) {
   const [typed, setTyped] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const state = useTranslator(text, "auto", settings.targetLanguage, packs.epoch, {
+  /** The source language the user picked ("auto": detect it); it is also the language OCR reads. */
+  const [source, setSource] = useState("auto");
+  const lastFile = useRef<Blob | null>(null);
+  const state = useTranslator(text, source, settings.targetLanguage, packs.epoch, {
     debounceMs: typed ? 300 : 0,
     isUsable: (code) => !packs.loaded || !!packs.languages.find((l) => l.code === code && (l.builtIn || l.installed)),
     onTargetChange: (target) => void patch({ targetLanguage: target }),
@@ -38,12 +42,13 @@ export function ImagesTab({ captured }: { captured?: CaptureResult | null }) {
     setBadImage(false);
     setTyped(false);
     setText("");
+    lastFile.current = file;
     setImageUrl((old) => {
       if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
       return URL.createObjectURL(file);
     });
     try {
-      const out = await ipc.ocrImage(new Uint8Array(await file.arrayBuffer()));
+      const out = await ipc.ocrImage(new Uint8Array(await file.arrayBuffer()), source);
       setText(out.text);
       setProblem(out.problem ?? (out.text.trim() ? null : { code: "no_text", languages: [] }));
     } catch (e) {
@@ -53,6 +58,14 @@ export function ImagesTab({ captured }: { captured?: CaptureResult | null }) {
       setBusy(false);
     }
   };
+
+  // A picture dropped on the window: Tauri gives the path, the backend the bytes.
+  const lastDrop = useRef(0);
+  useEffect(() => {
+    if (!dropped || dropped.n === lastDrop.current) return;
+    lastDrop.current = dropped.n;
+    void ipc.readDroppedFile(dropped.path).then((bytes) => load(new Blob([bytes as BlobPart])));
+  }, [dropped]);
 
   // An area capture arrives with its image and recognized text (the capture shortcut, or the button below).
   useEffect(() => {
@@ -64,9 +77,33 @@ export function ImagesTab({ captured }: { captured?: CaptureResult | null }) {
       if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
       return captured.imageUrl;
     });
+    lastFile.current = null;
     setText(captured.text);
     setProblem(captured.problem);
   }, [captured]);
+
+  // Another source language: read the same picture again with it (a kept capture or the opened file).
+  const read = useRef(source);
+  useEffect(() => {
+    if (source === read.current || source === "auto") {
+      read.current = source;
+      return;
+    }
+    read.current = source;
+    if (!imageUrl) return;
+    setBusy(true);
+    const again = lastFile.current
+      ? lastFile.current.arrayBuffer().then((b) => ipc.ocrImage(new Uint8Array(b), source))
+      : ipc.ocrCaptureAgain(source);
+    void again
+      .then((out) => {
+        setTyped(false);
+        setText(out.text);
+        setProblem(out.problem ?? (out.text.trim() ? null : { code: "no_text", languages: [] }));
+      })
+      .catch(() => setProblem({ code: "failed", languages: [] }))
+      .finally(() => setBusy(false));
+  }, [source]);
 
   // Ctrl+V with an image on the clipboard.
   useEffect(() => {
@@ -94,6 +131,8 @@ export function ImagesTab({ captured }: { captured?: CaptureResult | null }) {
   return (
     <div className="images">
       <div className="langbar">
+        <LanguagePicker label={t("lang.source")} value={source} languages={packs.languages} allowAuto detected={state.detected} onChange={setSource} />
+        <span aria-hidden="true">{"\u2192"}</span>
         <LanguagePicker
           label={t("lang.target")}
           value={target}
@@ -178,7 +217,9 @@ export function ImagesTab({ captured }: { captured?: CaptureResult | null }) {
                   {t("text.translating")}
                 </span>
               )}
-              {(state.status === "done" || (state.status === "translating" && state.result)) && <span>{state.result}</span>}
+              {(state.status === "done" || (state.status === "translating" && state.result)) && (
+                <ResultText text={state.result} segments={state.status === "done" ? state.segments : []} from={state.resolvedFrom ?? "en"} to={target} onPick={state.pick} />
+              )}
               {(state.status === "undetected" || state.status === "unavailable") && (
                 <DetectionNotice state={state} packs={packs} onPickSource={() => {}} />
               )}

@@ -110,10 +110,69 @@ pub(crate) type CmdResult<T> = Result<T, CmdError>;
 // --- translation -----------------------------------------------------------
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslateOut {
     text: String,
     /// The text went through English.
     pivoted: bool,
+    /// The translated sentences, for word alternatives.
+    segments: Vec<SegmentOut>,
+    /// How many glossary terms were put into the text.
+    glossary_hits: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SegmentOut {
+    source: String,
+    /// What the last model stage read (the source, or English after a pivot).
+    input: String,
+    target: String,
+    /// Position of `target` in the text, in UTF-16 units.
+    start: usize,
+    end: usize,
+    /// The user picked this sentence from the alternatives.
+    pinned: bool,
+}
+
+impl From<dawn_translate::Translation> for TranslateOut {
+    fn from(t: dawn_translate::Translation) -> Self {
+        Self {
+            text: t.text,
+            pivoted: t.pivoted,
+            segments: t.segments.into_iter().map(|s| SegmentOut { source: s.source, input: s.input, target: s.target, start: s.start, end: s.end, pinned: s.pinned }).collect(),
+            glossary_hits: t.glossary_hits,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct AlternativeOut {
+    word: String,
+    text: String,
+}
+
+/// Alternatives for the word after `prefix` in the translation of `input` (a segment's `input`).
+/// Slow the first time (the model is loaded for it), so it runs off the UI thread.
+#[tauri::command]
+pub async fn alternatives(state: State<'_, AppState>, from: String, to: String, input: String, prefix: String, current: String) -> CmdResult<Vec<AlternativeOut>> {
+    let engine = state.engine.clone();
+    let catalog = state.catalog.clone();
+    let started = Instant::now();
+    let found = tauri::async_runtime::spawn_blocking(move || engine.alternatives(&from, &to, &input, &prefix, 5))
+        .await
+        .map_err(|e| CmdError::new("engine", e))?
+        .map_err(|e| translate_error(&catalog, e))?;
+    if trace_enabled() {
+        trace_line(&format!("backend: alternatives in {} ms", started.elapsed().as_millis()));
+    }
+    Ok(dawn_translate::dedupe_alternatives(found, &current, 5).into_iter().map(|a| AlternativeOut { word: a.word, text: a.text }).collect())
+}
+
+/// Keep the user's pick for a sentence, so live re-translation does not undo it.
+#[tauri::command]
+pub fn pin_translation(state: State<'_, AppState>, from: String, to: String, source: String, input: String, translation: String) {
+    state.engine.pin(&from, &to, &source, &input, &translation);
 }
 
 fn translate_error(catalog: &Catalog, err: TranslateError) -> CmdError {
@@ -200,7 +259,7 @@ pub async fn translate(app: AppHandle, state: State<'_, AppState>, request_id: u
     })
     .await
     .map_err(|e| CmdError::new("engine", e))?
-    .map(|t| TranslateOut { text: t.text, pivoted: t.pivoted })
+    .map(TranslateOut::from)
     .map_err(|e| translate_error(&catalog, e))
 }
 

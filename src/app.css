@@ -850,3 +850,177 @@ html:has(.cap) #root {
   align-items: center;
   gap: 12px;
 }
+
+/* Word alternatives */
+.word {
+  cursor: pointer;
+  border-radius: 3px;
+}
+.word:hover,
+.word--cursor {
+  background: var(--dw-brand-soft);
+}
+.word--pinned {
+  text-decoration: underline dotted var(--dw-brand);
+  text-underline-offset: 3px;
+}
+.alts {
+  position: fixed;
+  z-index: 60;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 140px;
+  max-width: min(320px, calc(100vw - 16px));
+  overflow-y: auto;
+  border: 1px solid var(--dw-border);
+  border-radius: 8px;
+  background: var(--dw-surface);
+  color: var(--dw-text);
+  box-shadow: var(--dw-shadow-pop);
+}
+.alts__item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+}
+.alts__item:hover,
+.alts__item--on {
+  background: var(--dw-brand-soft);
+}
+.alts__note {
+  padding: 6px 10px;
+  color: var(--dw-text-2);
+}
+
+/* Files tab */
+.files {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+}
+.files__drop,
+.files__card {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  width: min(560px, 100%);
+  padding: 28px;
+  border: 2px dashed var(--dw-border-strong);
+  border-radius: 14px;
+  text-align: center;
+}
+.files__card {
+  border-style: solid;
+  border-width: 1px;
+  justify-items: stretch;
+  text-align: start;
+}
+.files__name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.files__hint {
+  margin: 0;
+  color: var(--dw-text-2);
+  font-size: 0.9em;
+}
+.files__path {
+  margin: 0;
+  word-break: break-all;
+  color: var(--dw-text-2);
+}
+.files__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.files__skipped ul {
+  margin: 4px 0 0;
+  padding-inline-start: 20px;
+  color: var(--dw-text-2);
+}
+
+/* Glossary page */
+.gloss__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  align-items: end;
+}
+.gloss__form label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9em;
+}
+.gloss__buttons {
+  display: flex;
+  gap: 8px;
+}
+.gloss__note {
+  margin: 8px 0 0;
+  color: var(--dw-text-2);
+  font-size: 0.9em;
+}
+.gloss__tools {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.gloss__tools input[type="search"] {
+  flex: 1;
+}
+.gloss__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.gloss__list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--dw-border);
+}
+.gloss__off {
+  opacity: 0.55;
+}
+.gloss__terms {
+  flex: 1;
+  display: grid;
+}
+.gloss__pair {
+  color: var(--dw-text-2);
+  font-size: 0.85em;
+}
+
+/* The note above the panes when the text came from an area capture */
+.capturechip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--dw-brand-soft);
+  color: var(--dw-brand-text);
+  width: fit-content;
+  font-size: 0.9em;
+}
+.capturechip__image {
+  display: block;
+  max-width: min(80vw, 640px);
+  max-height: 60vh;
+  object-fit: contain;
+}

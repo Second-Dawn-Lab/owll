@@ -9,6 +9,7 @@ import { CopyButton } from "./CopyButton";
 import { ocrProblemText } from "./packText";
 import { DetectionNotice } from "./DetectionNotice";
 import { LanguagePicker } from "./LanguagePicker";
+import { ResultText } from "./ResultText";
 import { usePacks } from "./usePacks";
 import { useTranslator } from "./useTranslator";
 
@@ -175,7 +176,14 @@ export function QuickPopup() {
           </span>
         )}
         {(state.status === "done" || (state.status === "translating" && state.result)) && (
-          <span className={state.status === "translating" && !state.fresh ? "pane__stale" : undefined}>{state.result}</span>
+          <ResultText
+            text={state.result}
+            segments={state.status === "done" ? state.segments : []}
+            from={state.resolvedFrom ?? "en"}
+            to={state.effectiveTo ?? target}
+            onPick={state.pick}
+            dimmed={state.status === "translating" && !state.fresh}
+          />
         )}
         {(state.status === "undetected" || state.status === "unavailable") && (
           <DetectionNotice state={state} packs={packs} onPickSource={setFrom} />

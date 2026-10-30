@@ -7,6 +7,7 @@ import { settingsStore } from "../settings/store";
 import { trace } from "../trace";
 import { CopyButton } from "./CopyButton";
 import { DetectionNotice } from "./DetectionNotice";
+import { ResultText } from "./ResultText";
 import { LanguagePicker } from "./LanguagePicker";
 import { packErrorText } from "./packText";
 import { formatBytes, usePacks } from "./usePacks";
@@ -19,7 +20,19 @@ const HISTORY_DELAY_MS = 1500;
 type Side = "sourceLanguage" | "targetLanguage";
 
 /** `incoming` is a history entry the user chose to translate again. */
-export function TextTab({ incoming, quick }: { incoming: HistoryEntry | null; quick: { text: string; n: number } | null }) {
+export function TextTab({
+  incoming,
+  quick,
+  capture,
+  onDismissCapture,
+}: {
+  incoming: HistoryEntry | null;
+  quick: { text: string; n: number } | null;
+  /** The text came from an area capture: its image can be viewed. */
+  capture?: { id: number; imageUrl: string } | null;
+  onDismissCapture?: () => void;
+}) {
+  const [viewImage, setViewImage] = useState(false);
   const { t, locale } = useT();
   const { settings, patch } = useSettings(settingsStore);
   const { sourceLanguage: from, targetLanguage: to } = settings;
@@ -203,6 +216,25 @@ export function TextTab({ incoming, quick }: { incoming: HistoryEntry | null; qu
         />
       </div>
 
+      {capture && (
+        <div className="capturechip" role="status">
+          <Icon name="scan" size={14} />
+          <span>{t("capture.chip")}</span>
+          <Button variant="ghost" icon="image" onClick={() => setViewImage(true)}>
+            {t("capture.view")}
+          </Button>
+          <IconButton icon="close" label={t("capture.dismiss")} onClick={onDismissCapture ?? (() => {})} />
+        </div>
+      )}
+      <Dialog
+        open={viewImage && !!capture}
+        title={t("capture.imageTitle")}
+        onClose={() => setViewImage(false)}
+        footer={<Button onClick={() => setViewImage(false)}>{t("common.close")}</Button>}
+      >
+        {capture && <img className="capturechip__image" src={capture.imageUrl} alt={t("capture.imageTitle")} />}
+      </Dialog>
+
       <div className="panes">
         <section className="pane">
           <textarea
@@ -248,7 +280,14 @@ export function TextTab({ incoming, quick }: { incoming: HistoryEntry | null; qu
               </span>
             )}
             {(state.status === "done" || (state.status === "translating" && state.result)) && (
-              <span className={state.status === "translating" && !state.fresh ? "pane__stale" : undefined}>{state.result}</span>
+              <ResultText
+                text={state.result}
+                segments={state.status === "done" ? state.segments : []}
+                from={state.resolvedFrom ?? "en"}
+                to={state.effectiveTo ?? to}
+                onPick={state.pick}
+                dimmed={state.status === "translating" && !state.fresh}
+              />
             )}
             {state.status === "error" && renderError()}
             {(state.status === "undetected" || state.status === "unavailable") && (
@@ -261,6 +300,11 @@ export function TextTab({ incoming, quick }: { incoming: HistoryEntry | null; qu
                 <>
                   <Spinner /> {t("text.translating")}
                 </>
+              )}
+              {state.status === "done" && state.glossaryHits > 0 && (
+                <span className="pane__via" title={t("gloss.applied", { count: state.glossaryHits })}>
+                  <Icon name="text" size={13} /> {t("gloss.applied", { count: state.glossaryHits })}
+                </span>
               )}
               {state.status === "done" && state.pivoted && (
                 <span className="pane__via" title={t("text.viaEnglishHint")}>

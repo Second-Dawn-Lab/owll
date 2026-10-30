@@ -2,6 +2,8 @@
 
 mod capture;
 mod commands;
+mod docs;
+mod glossary;
 mod history;
 mod ocr;
 mod placement;
@@ -26,12 +28,29 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(AppState::load())
+        .manage(glossary::GlossaryStore::load())
+        .manage(docs::DocJob::default())
+        .plugin(tauri_plugin_dialog::init())
         .manage(quick::Quick::new())
         .manage(capture::Capture::new())
         .register_uri_scheme_protocol("owlcap", capture::serve)
         .invoke_handler(tauri::generate_handler![
             commands::translate,
             commands::detect_language,
+            commands::alternatives,
+            commands::pin_translation,
+            glossary::glossary_get,
+            glossary::glossary_set,
+            glossary::glossary_import_csv,
+            glossary::glossary_export_csv,
+            glossary::glossary_clear,
+            docs::doc_inspect,
+            docs::doc_default_output,
+            docs::doc_translate,
+            docs::doc_cancel,
+            docs::doc_open,
+            docs::doc_show_in_folder,
+            docs::read_dropped_file,
             commands::list_languages,
             commands::install_language,
             commands::cancel_install,
@@ -68,6 +87,7 @@ pub fn run() {
             capture::capture_finish,
             capture::capture_start,
             capture::take_capture_result,
+            capture::ocr_capture_again,
             capture::ocr_status,
             capture::ocr_image,
             capture::open_windows_language_settings,
@@ -78,6 +98,7 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::build(app.handle())?;
+            glossary::apply(app.handle());
             let wanted = app.state::<AppState>().settings.lock().unwrap().launch_at_start;
             commands::apply_autostart(app.handle(), wanted);
             quick::reconfigure(app.handle());

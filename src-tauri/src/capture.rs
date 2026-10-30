@@ -33,8 +33,12 @@ struct Session {
 struct StoredResult {
     id: u64,
     bmp: Vec<u8>,
+    /// The pixels, kept in memory only, so another source language can read the same capture again.
+    image: dawn_ocr::OcrImage,
     text: String,
     problem: Option<ocr::Problem>,
+    /// The one language the text was read with (`None`: the automatic choice of several).
+    language: Option<String>,
 }
 
 /// Where a recognized capture is shown.
@@ -66,11 +70,13 @@ pub struct Capture {
     next_id: AtomicU64,
     /// The main window was hidden to start this capture; show it again if the capture is cancelled.
     restore_main: AtomicBool,
+    /// ... and also when the result goes to the small popup (the window returns behind it).
+    restore_after_result: AtomicBool,
 }
 
 impl Capture {
     pub fn new() -> Self {
-        Self { session: Mutex::new(None), result: Mutex::new(None), next_result: AtomicU64::new(1), busy: AtomicBool::new(false), next_id: AtomicU64::new(1), restore_main: AtomicBool::new(false) }
+        Self { session: Mutex::new(None), result: Mutex::new(None), next_result: AtomicU64::new(1), busy: AtomicBool::new(false), next_id: AtomicU64::new(1), restore_main: AtomicBool::new(false), restore_after_result: AtomicBool::new(false) }
     }
 }
 
@@ -157,6 +163,7 @@ pub fn cancel(app: &AppHandle) {
     let capture = app.state::<Capture>();
     *capture.session.lock().unwrap() = None;
     capture.busy.store(false, Ordering::SeqCst);
+    capture.restore_after_result.store(false, Ordering::SeqCst);
     if capture.restore_main.swap(false, Ordering::SeqCst) {
         crate::tray::show_main(app);
     }
@@ -292,6 +299,8 @@ pub fn recognize_and_show(app: &AppHandle, image: dawn_ocr::OcrImage, bmp: Optio
     let state = app.state::<AppState>();
     let (languages, active) = (state.settings.lock().unwrap().capture_languages.clone(), state.engine.installed_languages());
     let recognized = Instant::now();
+    let kept = bmp.is_some().then(|| image.clone());
+    let language = (languages.len() == 1).then(|| languages[0].clone());
     let outcome = ocr::recognize(&languages, &active, image);
     trace(&format!("capture: text recognized in {} ms ({} ms after the shortcut)", recognized.elapsed().as_millis(), since.elapsed().as_millis()));
     let (text, problem) = match outcome {
@@ -301,17 +310,29 @@ pub fn recognize_and_show(app: &AppHandle, image: dawn_ocr::OcrImage, bmp: Optio
     };
     let setting = state.settings.lock().unwrap().capture_result_in.clone();
     match (result_target(&setting, kind, bmp.is_some()), bmp) {
-        (ResultTarget::Main, Some(bmp)) => show_in_main(app, bmp, text.unwrap_or_default(), problem),
-        _ => quick::open_popup(app, QuickRequest::captured(text, problem, kind), anchor),
+        (ResultTarget::Main, Some(bmp)) => match kept {
+            Some(image) => show_in_main(app, bmp, image, text.unwrap_or_default(), problem, language),
+            None => quick::open_popup(app, QuickRequest::captured(text, problem, kind), anchor),
+        },
+        _ => {
+            quick::open_popup(app, QuickRequest::captured(text, problem, kind), anchor);
+            // The window that stepped aside for the capture returns, behind the popup.
+            if app.state::<Capture>().restore_after_result.swap(false, Ordering::SeqCst) {
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.show();
+                }
+            }
+        }
     }
 }
 
 /// Keep the result for the main window, bring that window to the front (it may be hidden in the
 /// tray) and tell its page to fetch the result.
-fn show_in_main(app: &AppHandle, bmp: Vec<u8>, text: String, problem: Option<ocr::Problem>) {
+fn show_in_main(app: &AppHandle, bmp: Vec<u8>, image: dawn_ocr::OcrImage, text: String, problem: Option<ocr::Problem>, language: Option<String>) {
     let capture = app.state::<Capture>();
     let id = capture.next_result.fetch_add(1, Ordering::SeqCst);
-    *capture.result.lock().unwrap() = Some(StoredResult { id, bmp, text, problem });
+    *capture.result.lock().unwrap() = Some(StoredResult { id, bmp, image, text, problem, language });
+    capture.restore_after_result.store(false, Ordering::SeqCst);
     crate::tray::show_main(app);
     let _ = app.emit_to("main", "capture-result", ());
 }
@@ -323,6 +344,8 @@ pub struct CaptureResultOut {
     image_url: String,
     text: String,
     problem: Option<ocr::Problem>,
+    /// The language the text was read with, when it was one language.
+    ocr_language: Option<String>,
 }
 
 /// The main window takes the pending capture result (once).
@@ -331,7 +354,7 @@ pub fn take_capture_result(capture: State<'_, Capture>, last_seen: Option<u64>) 
     let guard = capture.result.lock().unwrap();
     let result = guard.as_ref().filter(|r| Some(r.id) != last_seen)?;
     let base = if cfg!(windows) { "http://owlcap.localhost" } else { "owlcap://localhost" };
-    Some(CaptureResultOut { id: result.id, image_url: format!("{base}/result/{}", result.id), text: result.text.clone(), problem: result.problem.clone() })
+    Some(CaptureResultOut { id: result.id, image_url: format!("{base}/result/{}", result.id), text: result.text.clone(), problem: result.problem.clone(), ocr_language: result.language.clone() })
 }
 
 // --- commands around recognition ----------------------------------------------
@@ -362,10 +385,15 @@ pub struct OcrOut {
 pub async fn ocr_image(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdResult<OcrOut> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err(CmdError::new("bad_request", "expected image bytes")) };
     let bytes = bytes.clone();
+    // The source language the user picked for this image, if any (otherwise the capture languages).
+    let language = request.headers().get("x-ocr-language").and_then(|v| v.to_str().ok()).filter(|l| !l.is_empty() && *l != "auto").map(str::to_string);
     tauri::async_runtime::spawn_blocking(move || {
         let decoded = image::load_from_memory(&bytes).map_err(|e| CmdError::new("bad_image", e))?.to_rgba8();
         let state = app.state::<AppState>();
-        let (languages, active) = (state.settings.lock().unwrap().capture_languages.clone(), state.engine.installed_languages());
+        let (mut languages, active) = (state.settings.lock().unwrap().capture_languages.clone(), state.engine.installed_languages());
+        if let Some(language) = language {
+            languages = vec![language];
+        }
         let image = dawn_ocr::OcrImage { width: decoded.width(), height: decoded.height(), rgba: decoded.into_raw() };
         Ok(match ocr::recognize(&languages, &active, image) {
             Ok(text) => OcrOut { text, problem: None },
@@ -376,22 +404,62 @@ pub async fn ocr_image(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdR
     .map_err(|e| CmdError::new("engine", e))?
 }
 
+/// Read the kept capture again with another source language (the user chose one that differs from what
+/// the capture was read with). No new screenshot is needed: the pixels are still in memory.
+#[tauri::command]
+pub async fn ocr_capture_again(app: AppHandle, language: String) -> CmdResult<OcrOut> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let active = state.engine.installed_languages();
+        let image = app.state::<Capture>().result.lock().unwrap().as_ref().map(|r| r.image.clone());
+        let Some(image) = image else { return Err(CmdError::new("no_capture", "there is no capture to read again")) };
+        let out = match ocr::recognize(std::slice::from_ref(&language), &active, image) {
+            Ok(text) => OcrOut { text, problem: None },
+            Err(problem) => OcrOut { text: String::new(), problem: Some(problem) },
+        };
+        if let Some(stored) = app.state::<Capture>().result.lock().unwrap().as_mut() {
+            stored.text = out.text.clone();
+            stored.language = Some(language);
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| CmdError::new("engine", e))?
+}
+
 /// Start an area selection from the interface. With `hide_main` the main window steps aside
 /// first, so it is not in the screenshot (the capture buttons); "Try again" in the popup keeps it.
 #[tauri::command]
 pub fn capture_start(app: AppHandle, hide_main: bool) {
-    std::thread::spawn(move || {
-        if hide_main {
-            if let Some(main) = app.get_webview_window("main") {
-                if main.is_visible().unwrap_or(false) {
-                    let _ = main.hide();
-                    app.state::<Capture>().restore_main.store(true, Ordering::SeqCst);
-                    std::thread::sleep(std::time::Duration::from_millis(250));
+    std::thread::spawn(move || start_hiding_main(&app, hide_main));
+}
+
+/// The capture shortcut: it works whichever window is in front, Owl-L's own included. A visible main
+/// window steps aside first (so it is not in the screenshot) and comes back with the result, or when
+/// the capture is cancelled.
+pub fn start_from_shortcut(app: &AppHandle) {
+    start_hiding_main(app, true);
+}
+
+fn start_hiding_main(app: &AppHandle, hide_main: bool) {
+    if hide_main {
+        if let Some(main) = app.get_webview_window("main") {
+            if main.is_visible().unwrap_or(false) {
+                let capture = app.state::<Capture>();
+                // A capture is already running: do not hide the window for nothing.
+                if capture.busy.load(Ordering::SeqCst) {
+                    return;
                 }
+                let _ = main.hide();
+                capture.restore_main.store(true, Ordering::SeqCst);
+                capture.restore_after_result.store(true, Ordering::SeqCst);
+                trace("capture: main window hidden for the screenshot");
+                // Give the window time to disappear from the screen before the screenshot.
+                std::thread::sleep(std::time::Duration::from_millis(250));
             }
         }
-        start(&app);
-    });
+    }
+    start(app);
 }
 
 #[cfg(test)]

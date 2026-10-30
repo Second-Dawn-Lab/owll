@@ -12,6 +12,9 @@ Owl-L translates text and screen areas on your own computer. No account, no subs
 ## Features
 
 - Two-pane translation with automatic language detection
+- **Documents**: translate Word, PowerPoint, Excel, text, Markdown and PDF files (a PDF becomes a Word document) on your computer, keeping the formatting
+- **Word alternatives**: click a word of the translation to choose another one; the rest of the sentence follows
+- **Glossary**: terms that must be translated your way, with CSV import and export
 - Downloadable **language packs**: install only the languages you need
 - **Ctrl+C+C** to translate selected text from any app (popup next to the pointer)
 - **Area selection**: draw a box anywhere on screen and translate the text inside (images, videos, locked PDFs)

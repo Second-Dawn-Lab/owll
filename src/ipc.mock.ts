@@ -112,7 +112,36 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
           emit("translate-progress", { requestId: id, text, pass, done: upTo, total: sentences.length, pivoted, draftShown: pass === "refine" });
         }
       }
-      return out({ text: sentences.map((x) => `[${a.to}] ${x.trim()}`).join(" "), pivoted } satisfies TranslateResult);
+      const parts = sentences.map((x) => `[${a.to}] ${x.trim()}`);
+      let at = 0;
+      const segments = sentences.map((x, i) => {
+        const seg = { source: x.trim(), input: x.trim(), target: parts[i], start: at, end: at + parts[i].length, pinned: false };
+        at += parts[i].length + 1;
+        return seg;
+      });
+      return out({ text: parts.join(" "), pivoted, segments, glossaryHits: 0 } satisfies TranslateResult);
+    }
+    case "alternatives": {
+      await sleep(150);
+      return out([{ word: "Alternative", text: "Mock alternative sentence." }, { word: "Other", text: "Mock other sentence." }]);
+    }
+    case "pin_translation":
+      return out(undefined);
+    case "glossary_get":
+      return out({ enabled: true, entries: [] });
+    case "glossary_set":
+      return out(a.glossary);
+    case "glossary_export_csv":
+      return out("source,target,from,to,match_case,whole_word,enabled\n");
+    case "doc_inspect":
+      return out({ path: a.path, name: String(a.path).split(/[\\/]/).pop(), kind: "docx", sizeBytes: 1234, detection: "ok", detected: "en", tooLarge: false });
+    case "doc_default_output":
+      return out(String(a.path).replace(/(\.[^.]+)$/, ` (${String(a.to).toUpperCase()})$1`));
+    case "doc_translate":
+    case "doc_cancel":
+    case "doc_open":
+    case "doc_show_in_folder": {
+      return out(undefined);
     }
     case "detect_language": {
       const code = detect(a.text as string);
@@ -129,6 +158,7 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
       return out({ languages: [{ code: "en", engine: "windows", tag: "en-US" }], windowsTags: ["en-US"] });
     case "capture_overlay_info":
     case "take_capture_result":
+    case "ocr_capture_again":
       return out(null);
     case "capture_start":
     case "capture_cancel":

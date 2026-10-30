@@ -20,6 +20,7 @@
     "@seconddawn/settings": "link:../dawn-core/packages/settings",
     "@seconddawn/ui": "link:../dawn-core/packages/ui",
     "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-process": "^2",
     "@tauri-apps/plugin-updater": "^2",
     "react": "^19.0.0",
