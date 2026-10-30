@@ -3,6 +3,13 @@
 All notable changes to Owl-L. The newest version is first. The text of a version's section is used
 as the release notes and shown in the in-app update notice.
 
+## [0.2.1](https://github.com/Second-Dawn-Lab/owll/compare/v0.2.0...v0.2.1) (2026-10-30)
+
+
+### Features
+
+* translate and edit documents with drafts ([a6f5920](https://github.com/Second-Dawn-Lab/owll/commit/a6f5920613e8fc5dc2f2afd4812e9f23301c561d))
+
 ## [0.2.0](https://github.com/Second-Dawn-Lab/owll/compare/v0.1.1...v0.2.0) (2026-10-30)
 
 
