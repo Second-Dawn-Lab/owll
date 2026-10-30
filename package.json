@@ -1,6 +1,6 @@
 {
   "name": "@seconddawn/owll",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Owl-L: offline, lightweight translator",
   "license": "MIT",
