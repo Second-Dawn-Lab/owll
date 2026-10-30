@@ -38,6 +38,8 @@ export interface Settings {
   pdfOutput: "pdf" | "docx";
   /** Ask the PDF question before every batch with PDFs. */
   pdfAsk: boolean;
+  /** The Files tab's own target language ("" = not chosen yet). */
+  filesTargetLanguage: string;
 }
 
 /** Used until the backend answers, and by the browser mock. Keep in sync with Rust. */
@@ -70,4 +72,5 @@ export const defaultSettings: Settings = {
   glossaryActive: "",
   pdfOutput: "docx",
   pdfAsk: true,
+  filesTargetLanguage: "",
 };

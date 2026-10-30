@@ -40,6 +40,7 @@ pub fn run() {
             commands::translate,
             commands::detect_language,
             commands::alternatives,
+            commands::sentence_alternatives,
             commands::pin_translation,
             glossary::glossaries_get,
             glossary::glossaries_set,

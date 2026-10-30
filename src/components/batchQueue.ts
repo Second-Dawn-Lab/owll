@@ -80,9 +80,37 @@ export function sourceOf(item: BatchItem): string | null {
   return item.source !== "auto" ? item.source : item.detected;
 }
 
+/** Why a file that is ready will not run: its language is unknown, or it is already in the target language. */
+export type SkipReason = "no-language" | "same-language";
+
+export function skipReason(item: BatchItem, target: string): SkipReason | null {
+  if (item.status !== "ready") return null;
+  const from = sourceOf(item);
+  if (from === null) return "no-language";
+  return from === target ? "same-language" : null;
+}
+
 /** Files that can be started: they have a language and nothing went wrong. */
 export function startable(batch: Batch, target: string): BatchItem[] {
-  return batch.items.filter((i) => i.status === "ready" && sourceOf(i) !== null && sourceOf(i) !== target);
+  return batch.items.filter((i) => i.status === "ready" && skipReason(i, target) === null);
+}
+
+/** The main button: how many documents it starts, or why it cannot start any. */
+export type StartState = { count: number; disabledReason: null } | { count: 0; disabledReason: "empty" | "inspecting" | "all-same-language" | "no-language" | "nothing-ready" };
+
+export function startState(batch: Batch, target: string): StartState {
+  const count = startable(batch, target).length;
+  if (count > 0) return { count, disabledReason: null };
+  if (batch.items.length === 0) return { count: 0, disabledReason: "empty" };
+  if (batch.items.some((i) => i.status === "inspecting")) return { count: 0, disabledReason: "inspecting" };
+  const ready = batch.items.filter((i) => i.status === "ready");
+  if (ready.length === 0) return { count: 0, disabledReason: "nothing-ready" };
+  return { count: 0, disabledReason: ready.every((i) => skipReason(i, target) === "same-language") ? "all-same-language" : "no-language" };
+}
+
+/** Empty the list but keep counting ids: a new file must never get the id of an old one (the page remembers which ids it looked at). */
+export function clear(batch: Batch): Batch {
+  return { items: [], nextId: batch.nextId, running: false };
 }
 
 /** Queue every startable file; the first one is taken by `takeNext`. */

@@ -51,6 +51,9 @@ pub struct Settings {
     pub pdf_output: String,
     /// Ask that question before every batch with PDFs.
     pub pdf_ask: bool,
+    /// The target language of the Files tab ("" = not chosen yet: it starts as the Text tab's target). Separate
+    /// from `target_language`, so neither tab changes the other's choice.
+    pub files_target_language: String,
 }
 
 impl Default for Settings {
@@ -85,6 +88,7 @@ impl Default for Settings {
             glossary_active: String::new(),
             pdf_output: "docx".into(),
             pdf_ask: true,
+            files_target_language: String::new(),
         }
     }
 }

@@ -1201,3 +1201,223 @@ html:has(.cap) #root {
   flex-wrap: wrap;
   gap: 10px;
 }
+
+/* Text tab language bar: source | swap + target (centered) | glossary (end) */
+.langbar:has(.langbar__center) {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+}
+.langbar__center {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.langbar__side {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.langbar__side--end {
+  justify-content: flex-end;
+}
+
+/* Own dropdown (replaces the native select) */
+.dropdown {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 160px;
+  max-width: 260px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--dw-border);
+  border-radius: 8px;
+  background: var(--dw-surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.dropdown:hover {
+  border-color: var(--dw-border-strong);
+}
+.dropdown--compact {
+  min-width: 0;
+  height: 30px;
+}
+.dropdown__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown__list {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.dw-popover:has(.dropdown__list) {
+  min-width: 160px;
+}
+.dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.dropdown__item:hover,
+.dropdown__item--on {
+  background: var(--dw-brand-soft);
+}
+.dropdown__check {
+  width: 14px;
+  flex: none;
+}
+.dropdown__text {
+  display: grid;
+  min-width: 0;
+}
+.dropdown__hint {
+  color: var(--dw-text-2);
+  font-size: 0.8em;
+}
+.dropdown__sep {
+  border-top: 1px solid var(--dw-border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+/* Glossary terms in the result */
+.word--term {
+  color: var(--dw-brand-text);
+  background: var(--dw-brand-soft);
+  border-radius: 4px;
+}
+.alts--term {
+  padding-bottom: 8px;
+}
+.alts__link {
+  margin: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--dw-brand-text);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+.alts__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.alts__item .alts__preview {
+  flex: 1;
+  min-width: 0;
+}
+.sentalts {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dw-border);
+}
+.sentalts__title {
+  color: var(--dw-text-2);
+  font-size: 0.85em;
+}
+.sentalts__item {
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.sentalts__item:hover {
+  background: var(--dw-brand-soft);
+}
+.files__skip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--dw-warn);
+}
+
+/* Glossary page */
+.gloss__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gloss__headspacer {
+  flex: 1;
+}
+.gloss__add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gloss__term {
+  display: flex;
+  flex: 1;
+  min-width: 200px;
+  align-items: center;
+  gap: 6px;
+}
+.gloss__term input,
+.gloss__tools input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--dw-border);
+  border-radius: 8px;
+  background: var(--dw-surface);
+  color: inherit;
+  font: inherit;
+}
+.gloss__options summary {
+  cursor: pointer;
+  color: var(--dw-text-2);
+  margin: 8px 0 4px;
+}
+.gloss__group {
+  margin-top: 12px;
+}
+.gloss__pairname {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--dw-text-2);
+}
+.gloss__arrow {
+  opacity: 0.7;
+}

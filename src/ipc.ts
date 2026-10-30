@@ -140,6 +140,16 @@ export interface TranslateResult {
   segments: SegmentInfo[];
   /** How many glossary terms were put into the text. */
   glossaryHits: number;
+  /** Where they stand in the text (UTF-16 offsets), for highlighting. */
+  glossaryTerms: GlossaryTerm[];
+}
+
+/** A glossary term in the translation: what it replaced and what was put in. */
+export interface GlossaryTerm {
+  start: number;
+  end: number;
+  source: string;
+  target: string;
 }
 
 /** One translated sentence and where it sits in the result (UTF-16 offsets). */
@@ -305,6 +315,8 @@ export const ipc = {
   takeQuickText: () => call<string | null>("take_quick_text"),
   alternatives: (from: string, to: string, input: string, sentence: string, wordStart: number, current: string) =>
     call<Alternative[]>("alternatives", { from, to, input, sentence, wordStart, current }),
+  /** Up to three whole-sentence alternatives for a sentence, different from the current translation. */
+  sentenceAlternatives: (from: string, to: string, input: string, current: string) => call<string[]>("sentence_alternatives", { from, to, input, current }),
   pinTranslation: (from: string, to: string, source: string, input: string, translation: string) =>
     void call<void>("pin_translation", { from, to, source, input, translation }),
   glossariesGet: () => call<Glossaries>("glossaries_get"),

@@ -119,6 +119,16 @@ pub struct TranslateOut {
     segments: Vec<SegmentOut>,
     /// How many glossary terms were put into the text.
     glossary_hits: usize,
+    /// Where they stand (UTF-16 offsets), for highlighting.
+    glossary_terms: Vec<TermOut>,
+}
+
+#[derive(Serialize)]
+pub struct TermOut {
+    start: usize,
+    end: usize,
+    source: String,
+    target: String,
 }
 
 #[derive(Serialize)]
@@ -142,8 +152,20 @@ impl From<dawn_translate::Translation> for TranslateOut {
             pivoted: t.pivoted,
             segments: t.segments.into_iter().map(|s| SegmentOut { source: s.source, input: s.input, target: s.target, start: s.start, end: s.end, pinned: s.pinned }).collect(),
             glossary_hits: t.glossary_hits,
+            glossary_terms: t.glossary_terms.into_iter().map(|h| TermOut { start: h.start, end: h.end, source: h.source, target: h.target }).collect(),
         }
     }
+}
+
+/// Up to three whole-sentence alternatives for the translation of `input`, different from `current`.
+#[tauri::command]
+pub async fn sentence_alternatives(state: State<'_, AppState>, from: String, to: String, input: String, current: String) -> CmdResult<Vec<String>> {
+    let engine = state.engine.clone();
+    let catalog = state.catalog.clone();
+    tauri::async_runtime::spawn_blocking(move || engine.sentence_alternatives(&from, &to, &input, &current, 3))
+        .await
+        .map_err(|e| CmdError::new("engine", e))?
+        .map_err(|e| translate_error(&catalog, e))
 }
 
 #[derive(Serialize)]

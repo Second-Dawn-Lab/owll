@@ -7,10 +7,15 @@ import { settingsStore } from "../settings/store";
 import * as batchOps from "./batchQueue";
 import type { Batch, BatchItem } from "./batchQueue";
 import { docFailureKey, DOC_EXTENSIONS } from "./docFiles";
+import { formatFileSize, pluralForm } from "./fileSize";
 import { GlossaryPicker } from "./GlossaryPicker";
 import { LanguagePicker } from "./LanguagePicker";
 import { decidePdf } from "./pdfChoice";
-import { formatBytes, usePacks } from "./usePacks";
+import { usePacks } from "./usePacks";
+
+function iconFor(kind: BatchItem["kind"]): "doc" | "sheet" | "slides" | "pdf" {
+  return kind === "xlsx" ? "sheet" : kind === "pptx" ? "slides" : kind === "pdf" ? "pdf" : "doc";
+}
 
 /**
  * Document translation for one or many files: drop or choose them, check each file's language, translate.
@@ -29,7 +34,9 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
   const started = useRef(0);
   /** Where results go for this batch when the download location asks each time. */
   const folder = useRef<string | null>(null);
-  const target = settings.targetLanguage;
+  // The Files tab has its own target: the Text tab's "never translate X into X" rule and the target picked there
+  // cannot change it. Until it is chosen here, it starts as the Text tab's target.
+  const target = settings.filesTargetLanguage || settings.targetLanguage;
   const usable = packs.languages.filter((l) => l.installed || l.builtIn);
 
   const add = (paths: string[]) => {
@@ -102,6 +109,8 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
 
   const ready = batchOps.startable(batch, target);
   const busy = batchOps.busy(batch);
+  const startState = batchOps.startState(batch, target);
+  const plural = (n: number) => pluralForm(locale, n);
 
   const translateAll = async () => {
     folder.current = null;
@@ -159,20 +168,19 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
     <div className="files files--batch">
       <div className="langbar">
         <span>{t("files.translateInto")}</span>
-        <LanguagePicker label={t("lang.target")} value={target} languages={usable} onChange={(code) => void patch({ targetLanguage: code })} />
+        <LanguagePicker label={t("lang.target")} value={target} languages={usable} onChange={(code) => void patch({ filesTargetLanguage: code })} />
         <GlossaryPicker />
       </div>
 
       <ul className="files__list" aria-label={t("tab.files")}>
         {batch.items.map((item) => {
-          const from = batchOps.sourceOf(item);
           const editable = item.status === "ready" || item.status === "waiting";
           return (
             <li key={item.id} className={`files__row files__row--${item.status}`}>
-              <Icon name={item.kind === "xlsx" ? "text" : "file"} size={20} />
+              <Icon name={iconFor(item.kind)} size={20} />
               <span className="files__rowname" title={item.path}>
                 <strong>{item.name}</strong>
-                <span className="files__hint">{item.sizeBytes > 0 ? formatBytes(item.sizeBytes) : ""}</span>
+                <span className="files__hint">{item.sizeBytes > 0 ? formatFileSize(item.sizeBytes) : ""}</span>
               </span>
               <span className="files__rowlang">
                 {item.status === "inspecting" ? (
@@ -187,10 +195,15 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
                     onChange={(code) => editable && setBatch((b) => batchOps.setSource(b, item.id, code))}
                   />
                 ) : null}
-                {item.status === "ready" && !from && <span className="files__hint">{t("files.detectFailedShort")}</span>}
-                {item.status === "ready" && from === target && <span className="files__hint">{t("files.sameLanguage")}</span>}
+                {batchOps.skipReason(item, target) === "no-language" && <span className="files__hint">{t("files.detectFailedShort")}</span>}
               </span>
               <span className="files__status" aria-live="polite">
+                {batchOps.skipReason(item, target) === "same-language" && (
+                  <span className="files__skip">
+                    <Icon name="alert" size={16} /> {t("files.skippedSame", { lang: languageName(target, locale) })}
+                    <span className="files__hint">{t("files.skippedSameHint")}</span>
+                  </span>
+                )}
                 {item.status === "waiting" && t("files.status.waiting")}
                 {item.status === "translating" && (
                   <>
@@ -239,7 +252,7 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
               </span>
               {item.status === "done" && item.result && item.result.skipped.length > 0 && (
                 <details className="files__skipped">
-                  <summary>{t("files.skippedCount", { count: item.result.skipped.length })}</summary>
+                  <summary>{plural(item.result.skipped.length) === "one" ? t("files.skippedCount.one") : t("files.skippedCount.other", { count: item.result.skipped.length })}</summary>
                   <ul>
                     {item.result.skipped.map((s) => (
                       <li key={s}>{s}</li>
@@ -264,10 +277,11 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
             <Button icon="folder" onClick={() => void choose()}>
               {t("files.addMore")}
             </Button>
-            <Button variant="primary" disabled={ready.length === 0} onClick={() => void translateAll()}>
-              {t("files.translateN", { count: ready.length })}
+            <Button variant="primary" disabled={startState.count === 0} onClick={() => void translateAll()}>
+              {startState.count === 1 ? t("files.translateOne") : startState.count > 1 ? t("files.translateN", { count: startState.count }) : t("files.translate")}
             </Button>
-            <Button variant="ghost" onClick={() => setBatch(batchOps.emptyBatch)}>
+            {startState.disabledReason && <span className="files__hint">{t(`files.disabled.${startState.disabledReason}` as "files.disabled.empty")}</span>}
+            <Button variant="ghost" onClick={() => setBatch(batchOps.clear)}>
               {t("files.clearList")}
             </Button>
           </>

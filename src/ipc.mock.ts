@@ -119,7 +119,7 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
         at += parts[i].length + 1;
         return seg;
       });
-      return out({ text: parts.join(" "), pivoted, segments, glossaryHits: 0 } satisfies TranslateResult);
+      return out({ text: parts.join(" "), pivoted, segments, glossaryHits: 0, glossaryTerms: [] } satisfies TranslateResult);
     }
     case "alternatives": {
       await sleep(150);
@@ -129,6 +129,8 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
         { word: "Other", text: "Mock other sentence.", preview: "Other sentence. ...", current: false },
       ]);
     }
+    case "sentence_alternatives":
+      return out(["Mock sentence alternative one.", "Mock sentence alternative two."]);
     case "pin_translation":
       return out(undefined);
     case "glossaries_get":

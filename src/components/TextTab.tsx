@@ -44,8 +44,6 @@ export function TextTab({
   const state = useTranslator(input.text, from, to, packs.epoch * 1000 + glossaryVersion + settings.glossaryActive.length * 7, {
     // A language is usable when it is built in or active; while the list loads, assume yes.
     isUsable: (code) => !packs.loaded || !!packs.languages.find((l) => l.code === code && (l.builtIn || l.installed)),
-    // Source and target were the same language: show the target that was used instead.
-    onTargetChange: (target) => void patch({ targetLanguage: target }),
   });
   const [offer, setOffer] = useState<{ code: string; side: Side | null } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -201,22 +199,29 @@ export function TextTab({
   return (
     <div className="text-tab">
       <div className="langbar">
-        <LanguagePicker
-          label={t("lang.source")}
-          value={from}
-          detected={showDetected}
-          languages={packs.languages}
-          allowAuto
-          onChange={(code) => choose("sourceLanguage", code)}
-        />
-        <IconButton icon="swap" label={t("action.swap")} disabled={!canSwap} onClick={swap} />
-        <LanguagePicker
-          label={t("lang.target")}
-          value={to}
-          languages={packs.languages}
-          onChange={(code) => choose("targetLanguage", code)}
-        />
-        <GlossaryPicker />
+        <span className="langbar__side" />
+        <div className="langbar__center">
+          <LanguagePicker
+            label={t("lang.source")}
+            value={from}
+            detected={showDetected}
+            languages={packs.languages}
+            allowAuto
+            onChange={(code) => choose("sourceLanguage", code)}
+          />
+          <IconButton icon="swap" label={t("action.swap")} disabled={!canSwap} onClick={swap} />
+          {/* Never rewritten by the "same language" rule: when source and target are equal the translation goes to the
+              smart target and the picker shows it, but the saved choice stays the one the user made. */}
+          <LanguagePicker
+            label={t("lang.target")}
+            value={state.status === "done" && state.effectiveTo ? state.effectiveTo : to}
+            languages={packs.languages}
+            onChange={(code) => choose("targetLanguage", code)}
+          />
+        </div>
+        <span className="langbar__side langbar__side--end">
+          <GlossaryPicker />
+        </span>
       </div>
 
       {capture && (
@@ -286,9 +291,11 @@ export function TextTab({
               <ResultText
                 text={state.result}
                 segments={state.status === "done" ? state.segments : []}
+                terms={state.status === "done" ? state.glossaryTerms : []}
                 from={state.resolvedFrom ?? "en"}
                 to={state.effectiveTo ?? to}
                 onPick={state.pick}
+                sentenceAlternatives
                 dimmed={state.status === "translating" && !state.fresh}
               />
             )}

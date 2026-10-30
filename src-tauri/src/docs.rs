@@ -219,12 +219,25 @@ pub fn doc_cancel(job: State<'_, DocJob>) {
     }
 }
 
+/// Windows paths with backslashes only: Explorer does not take a path with forward slashes in `/select,`.
+fn windows_path(path: &str) -> String {
+    path.replace('/', "\\")
+}
+
+/// The command line that makes Explorer open the folder of `path` with the file selected.
+/// The path must stay in quotes as one piece (`/select,"C:\My Docs\a (DE).docx"`): Rust would quote the whole
+/// argument, `"/select,C:\My Docs\..."`, which Explorer cannot read, and then it opens the default folder.
+pub fn explorer_select_arg(path: &str) -> String {
+    format!("/select,\"{}\"", windows_path(path))
+}
+
 /// Open a file (the translated document) with the program Windows associates with it.
 #[tauri::command]
 pub fn doc_open(path: String) -> CmdResult<()> {
     #[cfg(windows)]
     {
-        std::process::Command::new("cmd").args(["/C", "start", "", &path]).spawn()?;
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("cmd").arg("/C").raw_arg("start \"\"").raw_arg(format!("\"{}\"", windows_path(&path))).spawn()?;
     }
     #[cfg(not(windows))]
     {
@@ -238,7 +251,8 @@ pub fn doc_open(path: String) -> CmdResult<()> {
 pub fn doc_show_in_folder(path: String) -> CmdResult<()> {
     #[cfg(windows)]
     {
-        std::process::Command::new("explorer").arg(format!("/select,{path}")).spawn()?;
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer").raw_arg(explorer_select_arg(&path)).spawn()?;
     }
     #[cfg(not(windows))]
     {
@@ -261,6 +275,12 @@ pub fn read_dropped_file(path: String) -> CmdResult<tauri::ipc::Response> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explorer_gets_the_file_selected_with_the_path_in_quotes_and_backslashes() {
+        assert_eq!(explorer_select_arg(r"C:\Users\me\My Docs\report (DE).docx"), "/select,\"C:\\Users\\me\\My Docs\\report (DE).docx\"");
+        assert_eq!(explorer_select_arg("D:/out/a b.docx"), "/select,\"D:\\out\\a b.docx\"");
+    }
 
     #[test]
     fn kinds_have_stable_names() {

@@ -22,3 +22,34 @@ export function nextListName(existing: string[], base: string): string {
     if (!taken.has(candidate.toLowerCase())) return candidate;
   }
 }
+
+/** What "add" stores: the entry, and with "both directions" also the reverse pair (target -> source). */
+export function entriesToAdd(entry: GlossaryEntry, bothDirections: boolean): GlossaryEntry[] {
+  if (!bothDirections || entry.id !== 0) return [entry];
+  return [entry, { ...entry, from: entry.to, to: entry.from, source: entry.target, target: entry.source }];
+}
+
+/** Is the entry complete: both terms written and two different languages. */
+export function entryValid(entry: GlossaryEntry): boolean {
+  return entry.source.trim() !== "" && entry.target.trim() !== "" && entry.from !== entry.to;
+}
+
+export interface PairGroup {
+  from: string;
+  to: string;
+  entries: GlossaryEntry[];
+}
+
+/** The entries grouped by language pair ("English -> German"), groups sorted by their names, entries by term. */
+export function groupByPair(entries: GlossaryEntry[], languageName: (code: string) => string): PairGroup[] {
+  const groups = new Map<string, PairGroup>();
+  for (const e of entries) {
+    const key = `${e.from}>${e.to}`;
+    const group = groups.get(key) ?? { from: e.from, to: e.to, entries: [] };
+    group.entries.push(e);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, entries: [...g.entries].sort((a, b) => a.source.toLowerCase().localeCompare(b.source.toLowerCase())) }))
+    .sort((a, b) => `${languageName(a.from)} ${languageName(a.to)}`.localeCompare(`${languageName(b.from)} ${languageName(b.to)}`));
+}

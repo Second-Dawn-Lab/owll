@@ -181,6 +181,7 @@ export function QuickPopup() {
           <ResultText
             text={state.result}
             segments={state.status === "done" ? state.segments : []}
+            terms={state.status === "done" ? state.glossaryTerms : []}
             from={state.resolvedFrom ?? "en"}
             to={state.effectiveTo ?? target}
             onPick={state.pick}

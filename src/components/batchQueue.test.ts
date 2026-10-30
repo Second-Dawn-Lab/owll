@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DocDone, DocInfo } from "../ipc";
-import { addPaths, busy, cancel, emptyBatch, failed, finished, inspectFailed, inspected, overall, pdfItems, progress, remove, setSource, sourceOf, start, startable, takeNext, type Batch } from "./batchQueue";
+import { addPaths, busy, cancel, clear, emptyBatch, failed, finished, inspectFailed, inspected, overall, pdfItems, progress, remove, setSource, skipReason, sourceOf, start, startable, startState, takeNext, type Batch } from "./batchQueue";
 
 const info = (path: string, extra: Partial<DocInfo> = {}): DocInfo => ({ path, name: path.split("/").pop() ?? path, kind: "docx", sizeBytes: 100, detection: "ok", detected: "en", tooLarge: false, ...extra });
 const done = (output: string): DocDone => ({ output, kind: "docx", units: 3, translated: 3, parts: null, skipped: [] });
@@ -112,5 +112,70 @@ describe("progress", () => {
   it("finds the PDFs, which need the output question", () => {
     const b = loaded(["/a.docx", "/b.pdf", "/c.PDF"], { "/b.pdf": { kind: "pdf" }, "/c.PDF": { kind: "pdf" } });
     expect(pdfItems(b.items).map((i) => i.name)).toEqual(["b.pdf", "c.PDF"]);
+  });
+});
+
+describe("a batch of English files translated into German", () => {
+  it("runs all three, one after another, and a batch of three starts three", () => {
+    let b = loaded(["/1.docx", "/2.xlsx", "/3.pptx"], { "/2.xlsx": { kind: "xlsx" }, "/3.pptx": { kind: "pptx" } });
+    expect(startState(b, "de")).toEqual({ count: 3, disabledReason: null });
+    b = start(b, "de");
+    const order: string[] = [];
+    for (let guard = 0; guard < 10; guard++) {
+      const next = takeNext(b);
+      b = next.batch;
+      if (!next.item) break;
+      order.push(next.item.name);
+      b = finished(b, done(`/out/${next.item.name}`));
+    }
+    expect(order).toEqual(["1.docx", "2.xlsx", "3.pptx"]);
+    expect(b.items.map((i) => i.status)).toEqual(["done", "done", "done"]);
+  });
+
+  it("German files into English all run (the target is not changed by the files' language)", () => {
+    const b = loaded(["/a.docx", "/b.docx", "/c.docx"], { "/a.docx": { detected: "de" }, "/b.docx": { detected: "de" }, "/c.docx": { detected: "de" } });
+    expect(startState(b, "en")).toEqual({ count: 3, disabledReason: null });
+    expect(startState(b, "de")).toEqual({ count: 0, disabledReason: "all-same-language" });
+  });
+});
+
+describe("skipped files and the main button", () => {
+  const mixed = () => loaded(["/en.docx", "/de1.docx", "/de2.docx", "/x.docx"], { "/de1.docx": { detected: "de" }, "/de2.docx": { detected: "de" }, "/x.docx": { detected: null, detection: "unsure" } });
+
+  it("a file already in the target language is skipped with that reason; one without a language says so", () => {
+    const b = mixed();
+    expect(b.items.map((i) => skipReason(i, "de"))).toEqual([null, "same-language", "same-language", "no-language"]);
+    expect(startable(b, "de").map((i) => i.name)).toEqual(["en.docx"]);
+  });
+
+  it("the button counts only the files that will run", () => {
+    expect(startState(mixed(), "de")).toEqual({ count: 1, disabledReason: null });
+  });
+
+  it("choosing another source language for a skipped file makes it run (translate anyway)", () => {
+    const b = setSource(mixed(), 2, "fr");
+    expect(skipReason(b.items[1], "de")).toBeNull();
+    expect(skipReason(b.items[2], "de")).toBe("same-language");
+    expect(startState(b, "de").count).toBe(2);
+  });
+
+  it("is disabled with a reason, never 'Translate 0 documents'", () => {
+    expect(startState(emptyBatch, "de")).toEqual({ count: 0, disabledReason: "empty" });
+    expect(startState(addPaths(emptyBatch, ["/a.docx"]), "de")).toEqual({ count: 0, disabledReason: "inspecting" });
+    expect(startState(loaded(["/a.docx"], { "/a.docx": { detected: "de" } }), "de")).toEqual({ count: 0, disabledReason: "all-same-language" });
+    expect(startState(loaded(["/a.docx"], { "/a.docx": { detected: null } }), "de")).toEqual({ count: 0, disabledReason: "no-language" });
+    let b = start(loaded(["/a.docx"]), "de");
+    b = finished(takeNext(b).batch, done("/o"));
+    expect(startState(b, "de")).toEqual({ count: 0, disabledReason: "nothing-ready" });
+  });
+});
+
+describe("clearing the list", () => {
+  it("keeps counting ids so a new file is never mistaken for an old one", () => {
+    const b = loaded(["/a.docx", "/b.docx"]);
+    const cleared = clear(b);
+    expect(cleared.items).toEqual([]);
+    const again = addPaths(cleared, ["/c.docx"]);
+    expect(again.items[0].id).toBeGreaterThan(Math.max(...b.items.map((i) => i.id)));
   });
 });

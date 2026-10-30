@@ -32,7 +32,6 @@ export function ImagesTab({ captured, dropped }: { captured?: CaptureResult | nu
   const state = useTranslator(text, source, settings.targetLanguage, packs.epoch, {
     debounceMs: typed ? 300 : 0,
     isUsable: (code) => !packs.loaded || !!packs.languages.find((l) => l.code === code && (l.builtIn || l.installed)),
-    onTargetChange: (target) => void patch({ targetLanguage: target }),
   });
   const target = state.effectiveTo ?? settings.targetLanguage;
 
@@ -218,7 +217,7 @@ export function ImagesTab({ captured, dropped }: { captured?: CaptureResult | nu
                 </span>
               )}
               {(state.status === "done" || (state.status === "translating" && state.result)) && (
-                <ResultText text={state.result} segments={state.status === "done" ? state.segments : []} from={state.resolvedFrom ?? "en"} to={target} onPick={state.pick} />
+                <ResultText text={state.result} segments={state.status === "done" ? state.segments : []} terms={state.status === "done" ? state.glossaryTerms : []} from={state.resolvedFrom ?? "en"} to={target} onPick={state.pick} />
               )}
               {(state.status === "undetected" || state.status === "unavailable") && (
                 <DetectionNotice state={state} packs={packs} onPickSource={() => {}} />

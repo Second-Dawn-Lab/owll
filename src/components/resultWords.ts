@@ -23,18 +23,30 @@ export function wordsOf(text: string): Word[] {
   return Array.from(text.matchAll(WORD), (m) => ({ text: m[0], start: m.index ?? 0, end: (m.index ?? 0) + m[0].length }));
 }
 
+export interface TermLike {
+  start: number;
+  end: number;
+}
+
+/** The glossary term a word belongs to (the word overlaps the term's position), if any. */
+export function termAt<H extends TermLike>(terms: H[], word: { start: number; end: number }): H | undefined {
+  return terms.find((t) => word.start < t.end && word.end > t.start);
+}
+
 /**
- * Put a picked sentence into the text. Returns the new text and the segments with the picked one replaced
- * (and marked as pinned) and every later one moved by the change in length.
+ * Put a picked sentence into the text. Returns the new text, the segments with the picked one replaced (and
+ * marked as pinned) and every later one moved by the change in length, and the glossary terms: those inside the
+ * replaced sentence are dropped (a picked sentence is not glossary-made), later ones move with the text.
  */
-export function applyPick<T extends SegmentLike>(text: string, segments: T[], index: number, sentence: string): { text: string; segments: T[] } {
+export function applyPick<T extends SegmentLike, H extends TermLike = TermLike>(text: string, segments: T[], index: number, sentence: string, terms: H[] = []): { text: string; segments: T[]; terms: H[] } {
   const seg = segments[index];
-  if (!seg) return { text, segments };
+  if (!seg) return { text, segments, terms };
   const delta = sentence.length - (seg.end - seg.start);
   const next = segments.map((s, i) => {
     if (i < index) return s;
     if (i === index) return { ...s, target: sentence, end: s.start + sentence.length, pinned: true };
     return { ...s, start: s.start + delta, end: s.end + delta };
   });
-  return { text: text.slice(0, seg.start) + sentence + text.slice(seg.end), segments: next };
+  const movedTerms = terms.filter((t) => t.end <= seg.start || t.start >= seg.end).map((t) => (t.start >= seg.end ? { ...t, start: t.start + delta, end: t.end + delta } : t));
+  return { text: text.slice(0, seg.start) + sentence + text.slice(seg.end), segments: next, terms: movedTerms };
 }

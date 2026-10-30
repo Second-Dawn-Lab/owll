@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { applyPick } from "./resultWords";
-import type { SegmentInfo } from "../ipc";
+import type { GlossaryTerm, SegmentInfo } from "../ipc";
 import { ipc, IpcError } from "../ipc";
 import { trace } from "../trace";
 
@@ -30,6 +30,8 @@ export interface TranslatorState {
   segments: SegmentInfo[];
   /** Glossary terms that were put into the result. */
   glossaryHits: number;
+  /** Where they stand in the result (highlighted, with a tooltip). */
+  glossaryTerms: GlossaryTerm[];
 }
 
 /** The state plus what the result pane can do with it. */
@@ -61,6 +63,7 @@ const IDLE: TranslatorState = {
   error: null,
   segments: [],
   glossaryHits: 0,
+  glossaryTerms: [],
 };
 
 let nextRequestId = 1;
@@ -102,6 +105,7 @@ export function useTranslator(text: string, from: string, to: string, epoch: num
         error: null,
         segments: [],
         glossaryHits: 0,
+        glossaryTerms: [],
       }));
     });
     return () => void unlisten.then((fn) => fn());
@@ -151,13 +155,13 @@ export function useTranslator(text: string, from: string, to: string, epoch: num
         const out = await ipc.translate(id, text, source, target);
         trace(`translate #${id} returned (${out.text.length} chars, superseded: ${cancelled})`);
         if (!cancelled) {
-          setState({ status: "done", result: out.text, fresh: true, refining: false, detected, resolvedFrom: source, effectiveTo: target, pivoted: out.pivoted, error: null, segments: out.segments ?? [], glossaryHits: out.glossaryHits ?? 0 });
+          setState({ status: "done", result: out.text, fresh: true, refining: false, detected, resolvedFrom: source, effectiveTo: target, pivoted: out.pivoted, error: null, segments: out.segments ?? [], glossaryHits: out.glossaryHits ?? 0, glossaryTerms: out.glossaryTerms ?? [] });
         }
       } catch (e) {
         const error = e instanceof IpcError ? e : new IpcError("unknown", String(e));
         // A newer request replaced this one in the backend; the newer result is on its way.
         if (!cancelled && error.code !== "cancelled") {
-          setState({ status: "error", result: "", fresh: false, refining: false, detected, resolvedFrom: source, effectiveTo: target, pivoted: false, error, segments: [], glossaryHits: 0 });
+          setState({ status: "error", result: "", fresh: false, refining: false, detected, resolvedFrom: source, effectiveTo: target, pivoted: false, error, segments: [], glossaryHits: 0, glossaryTerms: [] });
         }
       }
     };
@@ -175,8 +179,8 @@ export function useTranslator(text: string, from: string, to: string, epoch: num
 
   const pick = useCallback((segment: number, sentence: string) => {
     setState((s) => {
-      const out = applyPick(s.result, s.segments, segment, sentence);
-      return { ...s, result: out.text, segments: out.segments };
+      const out = applyPick(s.result, s.segments, segment, sentence, s.glossaryTerms);
+      return { ...s, result: out.text, segments: out.segments, glossaryTerms: out.terms, glossaryHits: out.terms.length };
     });
   }, []);
 
