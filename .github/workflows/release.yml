@@ -1,23 +1,63 @@
 name: Release
 
-# Push a tag such as v0.1.0 to build the Windows installer, sign the updater artifacts and create a
-# DRAFT GitHub Release with the installer, its .sig file and latest.json. Review the draft, then publish it
-# (the in-app updater only sees published releases). See docs/releasing.md.
+# Fully automated releases, with a human review step before anything is published:
+#
+#   1. Commits with Conventional Commit prefixes (fix:, feat:, ...) land on main.
+#   2. release-please keeps a "Release PR" open: it bumps the version (package.json, Cargo.toml, Cargo.lock),
+#      writes CHANGELOG.md and shows what the next version will be.
+#   3. Merging the Release PR makes release-please create the tag and a DRAFT GitHub Release.
+#   4. The `build` job below runs in the same workflow run (see why in docs/releasing.md): it builds the
+#      installer, signs the updater artifacts and uploads installer, .sig and latest.json to the draft.
+#   5. You test the draft and click Publish. The in-app updater only sees published releases.
+#
+# The build is a job of this workflow, not a separate workflow started by the tag: events made with the
+# default GITHUB_TOKEN (the tag, the release) never start other workflows.
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Rebuild the installer for an existing draft release (for example v0.1.1), after a failed build"
+        required: false
+        type: string
 
 permissions:
   contents: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  windows:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      # Pinned to a commit (v5.0.0). RELEASE_PLEASE_TOKEN is optional: with the default token the Release PR
+      # does not run CI (GitHub does not start workflows for events made by GITHUB_TOKEN).
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: rp
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+  build:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' || inputs.tag != '' }}
     runs-on: windows-latest
     timeout-minutes: 90
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           path: owll
 
       # Fail early and clearly instead of publishing updater artifacts that cannot be verified.
@@ -31,23 +71,25 @@ jobs:
           [ -z "$TAURI_SIGNING_PRIVATE_KEY" ] && missing="$missing TAURI_SIGNING_PRIVATE_KEY"
           [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ] && missing="$missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
           if [ -n "$missing" ]; then
-            echo "::error title=Updater signing secrets missing::Add these repository secrets (Settings > Secrets and variables > Actions):$missing. See docs/releasing.md, section 1. Nothing was built or published."
+            echo "::error title=Updater signing secrets missing::Add these repository secrets (Settings > Secrets and variables > Actions):$missing. See docs/releasing.md. Nothing was built or published."
             exit 1
           fi
           if grep -q "REPLACE_WITH" owll/src-tauri/tauri.conf.json; then
-            echo "::error title=Updater public key missing::plugins.updater.pubkey in src-tauri/tauri.conf.json is still the placeholder. See docs/releasing.md, section 1."
+            echo "::error title=Updater public key missing::plugins.updater.pubkey in src-tauri/tauri.conf.json is still the placeholder. See docs/releasing.md."
             exit 1
           fi
 
+      # package.json is the one version source: tauri.conf.json reads it, and release-please keeps Cargo.toml
+      # and Cargo.lock in step. This only catches a drift that release-please should have prevented.
       - name: Check that the tag matches the app version
         shell: bash
         run: |
           version=$(node -p "require('./owll/package.json').version")
-          conf=$(node -p "require('./owll/src-tauri/tauri.conf.json').version")
           cargo=$(grep -m1 '^version' owll/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
-          tag="${GITHUB_REF_NAME#v}"
-          if [ "$version" != "$tag" ] || [ "$conf" != "$tag" ] || [ "$cargo" != "$tag" ]; then
-            echo "::error title=Version mismatch::Tag is $GITHUB_REF_NAME but package.json=$version, tauri.conf.json=$conf, Cargo.toml=$cargo."
+          lock=$(grep -A1 '^name = "owll"$' owll/Cargo.lock | grep -m1 '^version' | sed 's/.*"\(.*\)".*/\1/')
+          tag="${TAG#v}"
+          if [ "$version" != "$tag" ] || [ "$cargo" != "$tag" ] || [ "$lock" != "$tag" ]; then
+            echo "::error title=Version mismatch::Tag is $TAG but package.json=$version, Cargo.toml=$cargo, Cargo.lock=$lock."
             exit 1
           fi
 
@@ -93,20 +135,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --bundles nsis --config src-tauri/tauri.release.conf.json
 
-      - name: Write latest.json and the release notes
+      - name: Write latest.json
         shell: bash
         working-directory: owll
         run: |
           installer=$(ls target/release/bundle/nsis/*-setup.exe | head -n1)
           test -f "$installer.sig" || { echo "::error::$installer.sig was not produced; is createUpdaterArtifacts on?"; exit 1; }
-          node scripts/make-latest-json.mjs "$GITHUB_REF_NAME" "$installer" "$installer.sig" release-out
+          node scripts/make-latest-json.mjs "$TAG" "$installer" "$installer.sig" release-out
           echo "INSTALLER=$installer" >> "$GITHUB_ENV"
 
-      - name: Create the draft GitHub Release
+      # The draft release already exists (release-please made it); its notes are release-please's.
+      - name: Upload the installer, its signature and latest.json to the draft release
         shell: bash
         working-directory: owll
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" "$INSTALLER" "$INSTALLER.sig" release-out/latest.json \
-            --repo "$GITHUB_REPOSITORY" --draft --title "Owl-L $GITHUB_REF_NAME" --notes-file release-out/release-notes.md
+        run: gh release upload "$TAG" "$INSTALLER" "$INSTALLER.sig" release-out/latest.json --clobber --repo "$GITHUB_REPOSITORY"

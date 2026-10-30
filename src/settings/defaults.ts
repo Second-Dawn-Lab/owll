@@ -30,6 +30,8 @@ export interface Settings {
   lastUpdateCheck: number;
   /** The first-run welcome has been shown or skipped. */
   onboardingDone: boolean;
+  /** Where an area capture shows its result. */
+  captureResultIn: "main" | "popup";
 }
 
 /** Used until the backend answers, and by the browser mock. Keep in sync with Rust. */
@@ -58,4 +60,5 @@ export const defaultSettings: Settings = {
   lastForeignTarget: "de",
   lastUpdateCheck: 0,
   onboardingDone: false,
+  captureResultIn: "main",
 };

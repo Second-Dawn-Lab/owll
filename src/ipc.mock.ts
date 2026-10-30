@@ -128,6 +128,7 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
     case "ocr_status":
       return out({ languages: [{ code: "en", engine: "windows", tag: "en-US" }], windowsTags: ["en-US"] });
     case "capture_overlay_info":
+    case "take_capture_result":
       return out(null);
     case "capture_start":
     case "capture_cancel":

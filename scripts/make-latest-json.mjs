@@ -11,7 +11,8 @@ import { pathToFileURL } from "node:url";
 export function releaseNotes(changelog, version) {
   const lines = changelog.split(/\r?\n/);
   const escaped = version.replace(/\./g, "\\.");
-  const heading = new RegExp("^##\\s*\\[?v?" + escaped + "\\]?(\\s|$)");
+  // "## [0.1.1](compare-link) (date)" as release-please writes it, or "## [0.1.1] - date" / "## 0.1.1".
+  const heading = new RegExp("^##\\s*\\[?v?" + escaped + "\\]?(\\s|\\(|$)");
   const start = lines.findIndex((l) => heading.test(l));
   if (start < 0) return "";
   let end = lines.findIndex((l, i) => i > start && /^##\s/.test(l));
@@ -19,6 +20,21 @@ export function releaseNotes(changelog, version) {
   return lines
     .slice(start + 1, end)
     .join("\n")
+    .trim();
+}
+
+/**
+ * The notes as plain text for the in-app update notice, which shows its first lines: release-please writes
+ * Markdown with links ("([abc1234](https://...))"), bold scopes and "### Features" headings.
+ */
+export function plainNotes(markdown) {
+  return markdown
+    .replace(/\s*\(\[[0-9a-f]{7,40}\]\([^)]*\)\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\*\*/g, "")
+    .replace(/^#{1,6}\s*(.+)$/gm, "$1:")
+    .replace(/^[*-]\s+/gm, "- ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
@@ -50,7 +66,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   }
   mkdirSync(outDir, { recursive: true });
-  const json = latestJson({ tag, installerName: basename(installer), signature: readFileSync(sigFile, "utf8"), notes });
+  const json = latestJson({ tag, installerName: basename(installer), signature: readFileSync(sigFile, "utf8"), notes: plainNotes(notes) });
   writeFileSync(`${outDir}/latest.json`, `${JSON.stringify(json, null, 2)}\n`);
   writeFileSync(`${outDir}/release-notes.md`, `${notes}\n`);
   console.log(`wrote ${outDir}/latest.json for ${tag}`);

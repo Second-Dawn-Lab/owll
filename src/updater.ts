@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "./ipc";
+import { outcomeOf } from "./updateOutcome";
 
 export interface UpdateInfo {
   version: string;
@@ -15,7 +16,12 @@ export type UpdateState =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "uptodate" }
-  | { kind: "error"; message: string }
+  /** The server could not be reached. */
+  | { kind: "offline" }
+  /** The server answered but has no release or no latest.json. */
+  | { kind: "norelease" }
+  /** Downloading or installing the update failed. */
+  | { kind: "failed"; message: string }
   | { kind: "available"; info: UpdateInfo }
   | { kind: "installing" };
 
@@ -47,19 +53,27 @@ export async function checkForUpdate(quiet: boolean): Promise<void> {
     return;
   }
   if (!quiet) set({ kind: "checking" });
+  let outcome;
+  let update: (Pending & { version: string; body?: string }) | null = null;
   try {
     const { check } = await import("@tauri-apps/plugin-updater");
-    const update = await check();
+    update = await check();
+    outcome = outcomeOf({ update });
     void invoke("update_check_done");
-    if (update) {
+  } catch (error) {
+    outcome = outcomeOf({ error });
+  }
+  switch (outcome.kind) {
+    case "available":
       pending = update;
-      set({ kind: "available", info: { version: update.version, notes: shortNotes(update.body) } });
-    } else if (!quiet) {
-      set({ kind: "uptodate" });
-    }
-  } catch (err) {
-    // No release yet, no network or a bad signature: say so only when the user asked.
-    if (!quiet) set({ kind: "error", message: String(err) });
+      set({ kind: "available", info: { version: outcome.version, notes: shortNotes(outcome.body) } });
+      break;
+    case "uptodate":
+      if (!quiet) set({ kind: "uptodate" });
+      break;
+    default:
+      // Offline, or no release yet: say so only when the user asked.
+      if (!quiet) set({ kind: outcome.kind });
   }
 }
 
@@ -72,7 +86,7 @@ export async function installUpdate(): Promise<void> {
     const { relaunch } = await import("@tauri-apps/plugin-process");
     await relaunch();
   } catch (err) {
-    set({ kind: "error", message: String(err) });
+    set({ kind: "failed", message: String(err) });
     pending = null;
   }
 }

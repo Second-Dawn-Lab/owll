@@ -28,8 +28,39 @@ struct Session {
     started: Instant,
 }
 
+/// The result of the last capture that is shown in the main window: the captured image (a BMP,
+/// served at `owlcap://.../result/<id>`) and what recognition found. Kept in memory only.
+struct StoredResult {
+    id: u64,
+    bmp: Vec<u8>,
+    text: String,
+    problem: Option<ocr::Problem>,
+}
+
+/// Where a recognized capture is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultTarget {
+    /// The Images tab of the main window: image, editable text and translation.
+    Main,
+    /// The small quick popup next to the selection.
+    Popup,
+}
+
+/// Where to show a result. Only an area capture can go to the main window, and only when the
+/// setting asks for it ("main" is the default, so an unknown value also means "main"); a clipboard
+/// image (Ctrl+C+C) always uses the popup, which is the shortcut's window.
+pub fn result_target(setting: &str, kind: &str, has_image: bool) -> ResultTarget {
+    if kind == "capture" && has_image && setting != "popup" {
+        ResultTarget::Main
+    } else {
+        ResultTarget::Popup
+    }
+}
+
 pub struct Capture {
     session: Mutex<Option<Session>>,
+    result: Mutex<Option<StoredResult>>,
+    next_result: AtomicU64,
     /// A capture is in progress (overlay shown, or recognition running).
     busy: AtomicBool,
     next_id: AtomicU64,
@@ -39,7 +70,7 @@ pub struct Capture {
 
 impl Capture {
     pub fn new() -> Self {
-        Self { session: Mutex::new(None), busy: AtomicBool::new(false), next_id: AtomicU64::new(1), restore_main: AtomicBool::new(false) }
+        Self { session: Mutex::new(None), result: Mutex::new(None), next_result: AtomicU64::new(1), busy: AtomicBool::new(false), next_id: AtomicU64::new(1), restore_main: AtomicBool::new(false) }
     }
 }
 
@@ -135,7 +166,23 @@ pub fn cancel(app: &AppHandle) {
 
 /// Handler of the `owlcap://` scheme: `/<session>/<monitor>` is that monitor's frozen screenshot.
 pub fn serve<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
-    let mut parts = request.uri().path().trim_matches('/').split('/');
+    let path = request.uri().path().trim_matches('/').to_string();
+    if let Some(id) = path.strip_prefix("result/").and_then(|i| i.parse::<u64>().ok()) {
+        let body = ctx
+            .app_handle()
+            .try_state::<Capture>()
+            .and_then(|capture| capture.result.lock().unwrap().as_ref().filter(|r| r.id == id).map(|r| r.bmp.clone()));
+        return match body {
+            Some(bytes) => tauri::http::Response::builder()
+                .header("Content-Type", "image/bmp")
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Cache-Control", "no-store")
+                .body(bytes)
+                .unwrap_or_default(),
+            None => tauri::http::Response::builder().status(404).body(Vec::new()).unwrap_or_default(),
+        };
+    }
+    let mut parts = path.split('/');
     let (session, index) = (parts.next().and_then(|s| s.parse::<u64>().ok()), parts.next().and_then(|s| s.parse::<usize>().ok()));
     let body = ctx.app_handle().try_state::<Capture>().and_then(|capture| {
         let guard = capture.session.lock().unwrap();
@@ -219,6 +266,8 @@ pub fn capture_finish(app: AppHandle, capture: State<'_, Capture>, label: String
     };
     let desktop = map::to_desktop((screen.x, screen.y), pixels);
     let cropped = map::crop(&screen.frame, pixels);
+    // The image the main window shows next to the text.
+    let bmp = cropped.as_ref().map(map::to_bmp);
     let started = session.started;
     drop(session); // the full screenshots are no longer needed
     let Some(frame) = cropped else {
@@ -230,26 +279,59 @@ pub fn capture_finish(app: AppHandle, capture: State<'_, Capture>, label: String
     let anchor = (desktop.x, desktop.y + desktop.h as i32);
     std::thread::spawn(move || {
         let busy = app.state::<Capture>();
-        recognize_and_show(&app, ocr::image_of(frame), Some(anchor), "capture", started);
+        recognize_and_show(&app, ocr::image_of(frame), bmp, Some(anchor), "capture", started);
         busy.busy.store(false, Ordering::SeqCst);
     });
     Ok(())
 }
 
-/// Recognize text in an image and show the result in the popup. Also used for an image on the
-/// clipboard (`kind` "quick").
-pub fn recognize_and_show(app: &AppHandle, image: dawn_ocr::OcrImage, anchor: Option<(i32, i32)>, kind: &'static str, since: Instant) {
+/// Recognize text in an image and show the result: in the main window's Images tab or in the popup,
+/// as the setting says (see [`result_target`]). `bmp` is the captured image for the main window; an
+/// image from the clipboard has none and always uses the popup.
+pub fn recognize_and_show(app: &AppHandle, image: dawn_ocr::OcrImage, bmp: Option<Vec<u8>>, anchor: Option<(i32, i32)>, kind: &'static str, since: Instant) {
     let state = app.state::<AppState>();
     let (languages, active) = (state.settings.lock().unwrap().capture_languages.clone(), state.engine.installed_languages());
     let recognized = Instant::now();
     let outcome = ocr::recognize(&languages, &active, image);
     trace(&format!("capture: text recognized in {} ms ({} ms after the shortcut)", recognized.elapsed().as_millis(), since.elapsed().as_millis()));
-    let request = match outcome {
-        Ok(text) if !text.trim().is_empty() => QuickRequest::captured(Some(text), None, kind),
-        Ok(_) => QuickRequest::captured(None, Some(ocr::Problem { code: "no_text", languages: Vec::new() }), kind),
-        Err(problem) => QuickRequest::captured(None, Some(problem), kind),
+    let (text, problem) = match outcome {
+        Ok(text) if !text.trim().is_empty() => (Some(text), None),
+        Ok(_) => (None, Some(ocr::Problem { code: "no_text", languages: Vec::new() })),
+        Err(problem) => (None, Some(problem)),
     };
-    quick::open_popup(app, request, anchor);
+    let setting = state.settings.lock().unwrap().capture_result_in.clone();
+    match (result_target(&setting, kind, bmp.is_some()), bmp) {
+        (ResultTarget::Main, Some(bmp)) => show_in_main(app, bmp, text.unwrap_or_default(), problem),
+        _ => quick::open_popup(app, QuickRequest::captured(text, problem, kind), anchor),
+    }
+}
+
+/// Keep the result for the main window, bring that window to the front (it may be hidden in the
+/// tray) and tell its page to fetch the result.
+fn show_in_main(app: &AppHandle, bmp: Vec<u8>, text: String, problem: Option<ocr::Problem>) {
+    let capture = app.state::<Capture>();
+    let id = capture.next_result.fetch_add(1, Ordering::SeqCst);
+    *capture.result.lock().unwrap() = Some(StoredResult { id, bmp, text, problem });
+    crate::tray::show_main(app);
+    let _ = app.emit_to("main", "capture-result", ());
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureResultOut {
+    id: u64,
+    image_url: String,
+    text: String,
+    problem: Option<ocr::Problem>,
+}
+
+/// The main window takes the pending capture result (once).
+#[tauri::command]
+pub fn take_capture_result(capture: State<'_, Capture>, last_seen: Option<u64>) -> Option<CaptureResultOut> {
+    let guard = capture.result.lock().unwrap();
+    let result = guard.as_ref().filter(|r| Some(r.id) != last_seen)?;
+    let base = if cfg!(windows) { "http://owlcap.localhost" } else { "owlcap://localhost" };
+    Some(CaptureResultOut { id: result.id, image_url: format!("{base}/result/{}", result.id), text: result.text.clone(), problem: result.problem.clone() })
 }
 
 // --- commands around recognition ----------------------------------------------
@@ -310,4 +392,26 @@ pub fn capture_start(app: AppHandle, hide_main: bool) {
         }
         start(&app);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_area_capture_goes_to_the_main_window_by_default() {
+        assert_eq!(result_target("main", "capture", true), ResultTarget::Main);
+        assert_eq!(result_target("", "capture", true), ResultTarget::Main, "an unknown value means the default");
+    }
+
+    #[test]
+    fn the_popup_setting_keeps_the_small_window() {
+        assert_eq!(result_target("popup", "capture", true), ResultTarget::Popup);
+    }
+
+    #[test]
+    fn clipboard_images_and_missing_images_always_use_the_popup() {
+        assert_eq!(result_target("main", "quick", true), ResultTarget::Popup);
+        assert_eq!(result_target("main", "capture", false), ResultTarget::Popup);
+    }
 }

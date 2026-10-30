@@ -43,6 +43,8 @@ pub struct Settings {
     pub last_update_check: u64,
     /// The first-run welcome has been shown (or skipped).
     pub onboarding_done: bool,
+    /// Where an area capture shows its result: "main" (the Images tab) | "popup" (the small quick window).
+    pub capture_result_in: String,
 }
 
 impl Default for Settings {
@@ -73,6 +75,7 @@ impl Default for Settings {
             last_foreign_target: "de".into(),
             last_update_check: 0,
             onboarding_done: false,
+            capture_result_in: "main".into(),
         }
     }
 }

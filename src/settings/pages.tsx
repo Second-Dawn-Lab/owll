@@ -94,16 +94,16 @@ function UpdateRow() {
   const { t } = useT();
   const state = useUpdateState();
   const checking = state.kind === "checking";
-  const status =
-    state.kind === "uptodate"
-      ? t("update.uptodate")
-      : state.kind === "error"
-        ? t("update.error")
-        : state.kind === "available"
-          ? t("update.available", { version: state.info.version })
-          : state.kind === "installing"
-            ? t("update.installing")
-            : t("update.version", { version: pkg.version });
+  const status = {
+    uptodate: t("update.uptodate"),
+    offline: t("update.offline"),
+    norelease: t("update.noRelease"),
+    failed: t("update.failed"),
+    installing: t("update.installing"),
+    available: state.kind === "available" ? t("update.available", { version: state.info.version }) : "",
+    idle: t("update.version", { version: pkg.version }),
+    checking: t("update.version", { version: pkg.version }),
+  }[state.kind];
   return (
     <Row title={t("update.check")} description={`${t("update.sectionDesc")} ${status}`}>
       {state.kind === "available" ? (
@@ -244,6 +244,24 @@ export function FilesPage() {
             ]}
           />
           {soon}
+        </div>
+      </Section>
+      <Section title={t("files.capture.result")}>
+        <div className="dw-row">
+          <div className="dw-row__text">
+            <div className="dw-row__desc">{t("files.capture.resultDesc")}</div>
+            <div className="row-extra">
+              <RadioGroup
+                name="captureResult"
+                value={settings.captureResultIn}
+                onChange={(v) => void patch({ captureResultIn: v })}
+                options={[
+                  { value: "main", label: t("files.capture.resultMain") },
+                  { value: "popup", label: t("files.capture.resultPopup") },
+                ]}
+              />
+            </div>
+          </div>
         </div>
       </Section>
       <Section title={t("files.history")}>

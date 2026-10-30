@@ -2,7 +2,7 @@ import { useSettings } from "@seconddawn/settings";
 import { Button, Icon, IconButton, Spinner } from "@seconddawn/ui";
 import { useEffect, useRef, useState } from "react";
 import { languageName, useT } from "../i18n";
-import { ipc, type OcrProblem } from "../ipc";
+import { ipc, type CaptureResult, type OcrProblem } from "../ipc";
 import { settingsStore } from "../settings/store";
 import { CopyButton } from "./CopyButton";
 import { DetectionNotice } from "./DetectionNotice";
@@ -12,7 +12,7 @@ import { usePacks } from "./usePacks";
 import { useTranslator } from "./useTranslator";
 
 /** Translate the text in an image: dropped, opened, pasted, or captured from the screen. */
-export function ImagesTab() {
+export function ImagesTab({ captured }: { captured?: CaptureResult | null }) {
   const { t, locale } = useT();
   const { settings, patch } = useSettings(settingsStore);
   const packs = usePacks();
@@ -39,7 +39,7 @@ export function ImagesTab() {
     setTyped(false);
     setText("");
     setImageUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
+      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
       return URL.createObjectURL(file);
     });
     try {
@@ -53,6 +53,20 @@ export function ImagesTab() {
       setBusy(false);
     }
   };
+
+  // An area capture arrives with its image and recognized text (the capture shortcut, or the button below).
+  useEffect(() => {
+    if (!captured) return;
+    setBusy(false);
+    setBadImage(false);
+    setTyped(false);
+    setImageUrl((old) => {
+      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
+      return captured.imageUrl;
+    });
+    setText(captured.text);
+    setProblem(captured.problem);
+  }, [captured]);
 
   // Ctrl+V with an image on the clipboard.
   useEffect(() => {

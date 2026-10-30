@@ -1,7 +1,7 @@
 import { Button, Chip, Dialog, Menu, Nav, type MenuEntry, type NavItem } from "@seconddawn/ui";
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
-import { ipc, type HistoryEntry } from "../ipc";
+import { ipc, type CaptureResult, type HistoryEntry } from "../ipc";
 import { checkForUpdate, quietCheckAtStartup } from "../updater";
 import { AboutCard } from "./AboutCard";
 import { ActivationOfferDialog } from "./ActivationOfferDialog";
@@ -22,6 +22,8 @@ export function MainWindow() {
   const [incoming, setIncoming] = useState<HistoryEntry | null>(null);
   /** Text sent here by quick access ("Open in Owl-L", or the shortcut with "main window" chosen). */
   const [quick, setQuick] = useState<{ text: string; n: number } | null>(null);
+  /** An area capture shown in the Images tab. */
+  const [captured, setCaptured] = useState<CaptureResult | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -35,6 +37,21 @@ export function MainWindow() {
       });
     take();
     const unlisten = ipc.onQuickText(take);
+    return () => void unlisten.then((fn) => fn());
+  }, []);
+
+  // An area capture finished: show it in the Images tab (the backend has already brought this window forward).
+  useEffect(() => {
+    let seen: number | null = null;
+    const take = () =>
+      void ipc.takeCaptureResult(seen).then((result) => {
+        if (!result) return;
+        seen = result.id;
+        setCaptured(result);
+        setTab("images");
+      });
+    take();
+    const unlisten = ipc.onCaptureResult(take);
     return () => void unlisten.then((fn) => fn());
   }, []);
 
@@ -75,7 +92,7 @@ export function MainWindow() {
         <div className="tabpanel" hidden={tab !== "text"}>
           <TextTab incoming={incoming} quick={quick} />
         </div>
-        {tab === "images" && <ImagesTab />}
+        {tab === "images" && <ImagesTab captured={captured} />}
         {tab === "files" && <ComingSoon icon="file" title={t("tab.files")} description="soon.files" />}
         {tab === "history" && (
           <HistoryTab

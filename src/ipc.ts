@@ -70,6 +70,14 @@ export interface OcrProblem {
   languages: string[];
 }
 
+/** An area capture whose result is shown in the main window's Images tab. */
+export interface CaptureResult {
+  id: number;
+  imageUrl: string;
+  text: string;
+  problem: OcrProblem | null;
+}
+
 export interface OcrOut {
   text: string;
   problem: OcrProblem | null;
@@ -216,6 +224,7 @@ export const ipc = {
   quickOpenInMain: (text: string) => call<void>("quick_open_in_main", { text }),
   quickBlockApp: (name: string) => call<void>("quick_block_app", { name }),
   takeQuickText: () => call<string | null>("take_quick_text"),
+  takeCaptureResult: (lastSeen: number | null) => call<CaptureResult | null>("take_capture_result", { lastSeen }),
 
   /** Where the maximize button is (physical pixels), so Windows can show Snap Layouts for it. */
   setMaximizeRect: (rect: [number, number, number, number]) => call<void>("set_maximize_rect", { rect }),
@@ -223,6 +232,7 @@ export const ipc = {
   onCaptureOpen: (cb: () => void) => on<null>("capture-open", cb),
   onQuickOpen: (cb: () => void) => on<null>("quick-open", cb),
   onQuickText: (cb: () => void) => on<null>("quick-text", cb),
+  onCaptureResult: (cb: () => void) => on<null>("capture-result", cb),
   onSettingsChanged: (cb: (s: Settings) => void) => on<Settings>("settings-changed", cb),
   onTranslateProgress: (cb: (p: TranslateProgress) => void) => on<TranslateProgress>("translate-progress", cb),
   onPackProgress: (cb: (p: PackProgress) => void) => on<PackProgress>("pack-progress", cb),

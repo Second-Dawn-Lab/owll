@@ -53,6 +53,7 @@ export function usePacks() {
     languages,
     progress,
     epoch,
+    reload,
     /** At least one language besides English is installed. */
     hasExtra: languages.some((l) => !l.builtIn && l.installed),
     loaded: languages.length > 0,

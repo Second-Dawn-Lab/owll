@@ -36,7 +36,14 @@ export function UpdateNotice() {
     );
   }
 
-  const text = state.kind === "uptodate" ? t("update.uptodate") : t("update.error");
+  const text =
+    state.kind === "uptodate"
+      ? t("update.uptodate")
+      : state.kind === "norelease"
+        ? t("update.noRelease")
+        : state.kind === "failed"
+          ? t("update.failed")
+          : t("update.offline");
   return (
     <aside className="update-notice update-notice--brief" role="status" aria-live="polite">
       <Icon name={state.kind === "uptodate" ? "check" : "alert"} size={18} />

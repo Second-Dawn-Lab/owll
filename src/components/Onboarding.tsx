@@ -4,6 +4,7 @@ import { languageName, useT } from "../i18n";
 import { ipc } from "../ipc";
 import type { Settings } from "../settings/defaults";
 import { Kbd } from "../settings/ShortcutEditor";
+import { choiceState, choicesSorted, planChoices } from "./onboardingState";
 import { formatBytes, usePacks } from "./usePacks";
 
 type Step = "welcome" | "languages" | "shortcuts";
@@ -34,13 +35,16 @@ export function Onboarding() {
     setOpen(false);
     void ipc.setSettings({ onboardingDone: true });
   };
-  const choices = packs.languages.filter((l) => !l.builtIn && !l.installed);
+  // Every language of the catalog, by the name shown in the UI language (as on the Language packs page).
+  const choices = choicesSorted(packs.languages, locale, (l) => languageName(l.code, locale, l.name));
   const toggle = (code: string) => setChosen((c) => (c.includes(code) ? c.filter((x) => x !== code) : [...c, code]));
-  const download = () => {
+  const plan = planChoices(packs.languages, chosen);
+  const apply = () => {
     setStarted(true);
-    chosen.forEach((code) => void packs.install(code));
+    // Files that are already on disk (shared with another language) are only switched on.
+    if (plan.activate.length > 0) void ipc.activateLanguages(plan.activate).then(() => packs.reload());
+    plan.download.forEach((code) => void packs.install(code));
   };
-  const total = chosen.reduce((sum, code) => sum + (packs.languages.find((l) => l.code === code)?.sizeBytes ?? 0), 0);
 
   const skip = (
     <Button variant="ghost" onClick={finish}>
@@ -65,8 +69,8 @@ export function Onboarding() {
           <>
             {skip}
             {chosen.length > 0 && !started && (
-              <Button icon="download" onClick={download}>
-                {t("onboarding.download", { size: formatBytes(total) })}
+              <Button icon={plan.download.length > 0 ? "download" : "check"} onClick={apply}>
+                {plan.download.length > 0 ? t("onboarding.download", { size: formatBytes(plan.bytes) }) : t("onboarding.addNow")}
               </Button>
             )}
             <Button variant="primary" onClick={() => setStep("shortcuts")}>
@@ -101,11 +105,20 @@ export function Onboarding() {
               {choices.map((l) => {
                 const p = packs.progress[l.code];
                 const name = languageName(l.code, locale, l.name);
+                const state = choiceState(l);
+                const detail =
+                  state === "active"
+                    ? t("packs.installed")
+                    : state === "activate"
+                      ? l.includedWith[0]
+                        ? t("onboarding.activate", { lang: languageName(l.includedWith[0], locale) })
+                        : t("pack.filesKept", { size: formatBytes(l.totalBytes) })
+                      : formatBytes(l.sizeBytes || l.totalBytes);
                 return (
                   <div key={l.code} className="onboarding__lang">
-                    <Checkbox checked={chosen.includes(l.code) || l.available} disabled={started || l.available} onChange={() => toggle(l.code)}>
+                    <Checkbox checked={state === "active" || chosen.includes(l.code)} disabled={started || state === "active"} onChange={() => toggle(l.code)}>
                       {name} {l.beta && <Chip tone="warn">{t("lang.beta")}</Chip>}
-                      <span className="onboarding__size"> {l.available ? t("packs.installed") : formatBytes(l.sizeBytes || l.totalBytes)}</span>
+                      <span className="onboarding__size"> {detail}</span>
                     </Checkbox>
                     {packs.isBusy(l.code) && <ProgressBar value={p?.done ?? 0} max={p?.total} label={name} />}
                     {p?.phase === "error" && <span className="pack__error">{t("pack.failed")}</span>}

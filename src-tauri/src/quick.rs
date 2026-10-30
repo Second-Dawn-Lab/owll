@@ -321,7 +321,7 @@ fn trigger(app: &AppHandle) {
     }
     // An image was copied: recognize it instead.
     if let Selection::Image(image) = selection {
-        crate::capture::recognize_and_show(app, image, hk::cursor_position(), "capture", started);
+        crate::capture::recognize_and_show(app, image, None, hk::cursor_position(), "capture", started);
         return;
     }
     let text = match decide(selection, settings.ignore_quick_access_without_selection) {

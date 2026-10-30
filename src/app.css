@@ -832,8 +832,9 @@ html:has(.cap) #root {
 .onboarding__langs {
   display: grid;
   gap: 8px;
-  max-height: 260px;
+  max-height: min(320px, 40vh);
   overflow-y: auto;
+  padding-right: 6px;
 }
 .onboarding__lang {
   display: grid;

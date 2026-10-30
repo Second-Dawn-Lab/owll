@@ -67,6 +67,7 @@ pub fn run() {
             capture::capture_cancel,
             capture::capture_finish,
             capture::capture_start,
+            capture::take_capture_result,
             capture::ocr_status,
             capture::ocr_image,
             capture::open_windows_language_settings,
