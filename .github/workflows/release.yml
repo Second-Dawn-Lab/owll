@@ -83,13 +83,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: owll
 
-      # createUpdaterArtifacts is off in tauri.conf.json so local builds need no key; it is switched on here.
+      # createUpdaterArtifacts is off in tauri.conf.json so local builds need no key; src-tauri/tauri.release.conf.json
+      # switches it on. A file path (relative to working-directory) is used because PowerShell, the default
+      # shell on Windows runners, strips the quotes from inline JSON.
       - name: Build the installer and sign the updater artifacts
         working-directory: owll
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":true}}'
+        run: pnpm tauri build --bundles nsis --config src-tauri/tauri.release.conf.json
 
       - name: Write latest.json and the release notes
         shell: bash
