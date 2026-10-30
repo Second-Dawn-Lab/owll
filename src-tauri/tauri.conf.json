@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Owl-L",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "identifier": "lab.seconddawn.owll",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -48,13 +48,39 @@
     "active": true,
     "publisher": "Second Dawn",
     "copyright": "Second Dawn contributors",
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": false,
+    "shortDescription": "Owl-L: offline, private translator",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "./installer/hooks.nsh",
+        "languages": [
+          "English",
+          "German"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUyRjhFMTU1NTIwODEwOTUKUldTVkVBaFNWZUg0NHF4SjQ5bm1tT0tpSVQzZ3NZR3VFMUMwMkozU3YrYW9kZ2o0TGtocXdnTWQK",
+      "endpoints": [
+        "https://github.com/Second-Dawn-Lab/owll/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

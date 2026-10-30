@@ -1,7 +1,8 @@
 import { Icon, Popover } from "@seconddawn/ui";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { languageName, useT } from "../i18n";
 import type { LanguageInfo } from "../ipc";
+import { placeDropdown } from "./dropdownPlacement";
 
 interface Props {
   value: string;
@@ -18,6 +19,7 @@ export function LanguagePicker({ value, onChange, languages, allowAuto, detected
   const { t, locale } = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -31,6 +33,45 @@ export function LanguagePicker({ value, onChange, languages, allowAuto, detected
       download: items.filter((l) => !l.installed),
     };
   }, [languages, query, locale, allowAuto, t]);
+
+  // Keep the list inside the window: the quick popup can be smaller than the list, and a window clips it.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const fit = () => {
+      const panel = panelRef.current;
+      const popover = panel?.parentElement;
+      const list = panel?.querySelector<HTMLElement>(".picker__list");
+      const search = panel?.querySelector<HTMLElement>(".picker__search");
+      const trigger = popover?.parentElement;
+      if (!panel || !popover || !list || !search || !trigger) return;
+      // Measure the natural size first, then apply the placement.
+      panel.style.width = "";
+      list.style.maxHeight = "";
+      popover.style.transform = "";
+      popover.style.top = "";
+      popover.style.bottom = "";
+      const placement = placeDropdown({
+        trigger: trigger.getBoundingClientRect(),
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        width: panel.offsetWidth,
+        chromeHeight: search.offsetHeight,
+        listHeight: list.scrollHeight,
+      });
+      panel.style.width = `${placement.width}px`;
+      list.style.maxHeight = `${placement.listMaxHeight}px`;
+      popover.style.transform = `translateX(calc(-50% + ${placement.shiftX}px))`;
+      if (placement.flipUp) {
+        popover.style.top = "auto";
+        popover.style.bottom = "calc(100% + 6px)";
+      }
+    };
+    fit();
+    // Focus only now that the list is in place, and without scrolling: focusing it unplaced would scroll the
+    // clipped popup sideways to reveal the list and push the trigger out of view.
+    panelRef.current?.querySelector("input")?.focus({ preventScroll: true });
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [open, groups]);
 
   const choose = (code: string) => {
     onChange(code);
@@ -89,11 +130,10 @@ export function LanguagePicker({ value, onChange, languages, allowAuto, detected
         </button>
       }
     >
-      <div className="picker">
+      <div className="picker" ref={panelRef}>
         <div className="picker__search">
           <Icon name="search" size={15} />
           <input
-            autoFocus
             value={query}
             placeholder={t("lang.search")}
             aria-label={t("lang.search")}

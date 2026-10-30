@@ -39,6 +39,10 @@ pub struct Settings {
     pub target_language: String,
     /// The last target the user picked that was not English (for "never translate X to X").
     pub last_foreign_target: String,
+    /// Unix time of the last update check (0 = never); see `updates.rs`.
+    pub last_update_check: u64,
+    /// The first-run welcome has been shown (or skipped).
+    pub onboarding_done: bool,
 }
 
 impl Default for Settings {
@@ -67,6 +71,8 @@ impl Default for Settings {
             source_language: "auto".into(),
             target_language: "de".into(),
             last_foreign_target: "de".into(),
+            last_update_check: 0,
+            onboarding_done: false,
         }
     }
 }

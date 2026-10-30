@@ -1,9 +1,11 @@
 import { useSettings } from "@seconddawn/settings";
 import { Button, Checkbox, Chip, Dialog, IconButton, Row, RadioGroup, Section, Select, Switch } from "@seconddawn/ui";
 import { useEffect, useState } from "react";
+import pkg from "../../package.json";
 import { AboutCard } from "../components/AboutCard";
 import { useT } from "../i18n";
 import { ipc } from "../ipc";
+import { checkForUpdate, installUpdate, useUpdateState } from "../updater";
 import { defaultSettings } from "./defaults";
 import { CaptureLanguages } from "./CaptureLanguages";
 import { Kbd, ShortcutDialog } from "./ShortcutEditor";
@@ -76,10 +78,44 @@ export function GeneralPage() {
         </div>
       </Section>
 
+      <Section title={t("update.section")}>
+        <UpdateRow />
+      </Section>
+
       <Section title={t("about.title")}>
         <AboutCard />
       </Section>
     </>
+  );
+}
+
+/** "Check for updates" with its result next to the button, and the install button when one exists. */
+function UpdateRow() {
+  const { t } = useT();
+  const state = useUpdateState();
+  const checking = state.kind === "checking";
+  const status =
+    state.kind === "uptodate"
+      ? t("update.uptodate")
+      : state.kind === "error"
+        ? t("update.error")
+        : state.kind === "available"
+          ? t("update.available", { version: state.info.version })
+          : state.kind === "installing"
+            ? t("update.installing")
+            : t("update.version", { version: pkg.version });
+  return (
+    <Row title={t("update.check")} description={`${t("update.sectionDesc")} ${status}`}>
+      {state.kind === "available" ? (
+        <Button variant="primary" onClick={() => void installUpdate()}>
+          {t("update.install")}
+        </Button>
+      ) : (
+        <Button disabled={checking || state.kind === "installing"} onClick={() => void checkForUpdate(false)}>
+          {checking ? t("update.checking") : t("update.check")}
+        </Button>
+      )}
+    </Row>
   );
 }
 

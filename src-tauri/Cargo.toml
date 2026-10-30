@@ -16,6 +16,9 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-autostart = "2"
 # A second launch focuses the running window instead of starting another tray icon.
 tauri-plugin-single-instance = "2"
+# Update checks against the latest GitHub release, and the restart after installing one.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 # Reads the copied text for quick access (text only, so no image support is compiled in).
 # "image-data" lets Ctrl+C+C read an image on the clipboard (it is then recognized as text).
 arboard = { version = "3", default-features = false, features = ["image-data"] }

@@ -2,13 +2,16 @@ import { Button, Chip, Dialog, Menu, Nav, type MenuEntry, type NavItem } from "@
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { ipc, type HistoryEntry } from "../ipc";
+import { checkForUpdate, quietCheckAtStartup } from "../updater";
 import { AboutCard } from "./AboutCard";
 import { ActivationOfferDialog } from "./ActivationOfferDialog";
 import { CloseDialog } from "./CloseDialog";
 import { ComingSoon } from "./ComingSoon";
 import { HistoryTab } from "./HistoryTab";
+import { Onboarding } from "./Onboarding";
 import { ImagesTab } from "./ImagesTab";
 import { TextTab } from "./TextTab";
+import { UpdateNotice } from "./UpdateNotice";
 import { WindowControls } from "./WindowControls";
 
 type Tab = "text" | "images" | "files" | "history";
@@ -35,6 +38,11 @@ export function MainWindow() {
     return () => void unlisten.then((fn) => fn());
   }, []);
 
+  // Quiet check for a new version, at most once a day (the backend decides).
+  useEffect(() => {
+    void quietCheckAtStartup();
+  }, []);
+
   const tabs: NavItem<Tab>[] = [
     { id: "text", label: t("tab.text"), icon: "text" },
     { id: "images", label: t("tab.images"), icon: "image" },
@@ -45,7 +53,7 @@ export function MainWindow() {
   const menu: MenuEntry[] = [
     { label: t("menu.settings"), icon: "settings", onSelect: () => void ipc.openSettings() },
     { label: t("menu.packs"), icon: "package", onSelect: () => void ipc.openSettings("packs") },
-    { label: t("menu.updates"), icon: "download", hint: t("menu.updatesHint"), disabled: true, separator: true, onSelect: () => {} },
+    { label: t("menu.updates"), icon: "download", separator: true, onSelect: () => void checkForUpdate(false) },
     { label: t("menu.about"), icon: "info", onSelect: () => setAboutOpen(true) },
     { label: t("menu.quit"), icon: "close", separator: true, onSelect: () => void ipc.quit() },
   ];
@@ -90,6 +98,8 @@ export function MainWindow() {
         </div>
       </Dialog>
 
+      <Onboarding />
+      <UpdateNotice />
       <CloseDialog />
       <ActivationOfferDialog />
     </div>

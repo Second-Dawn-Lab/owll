@@ -10,6 +10,7 @@ mod settings;
 mod smart;
 mod titlebar;
 mod tray;
+mod updates;
 
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
@@ -21,6 +22,9 @@ pub fn run() {
         // Must be registered first: a second launch just brings the running window forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
+        // The only network access besides language pack downloads: asks GitHub for latest.json (see docs/releasing.md).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(AppState::load())
         .manage(quick::Quick::new())
         .manage(capture::Capture::new())
@@ -68,6 +72,8 @@ pub fn run() {
             capture::open_windows_language_settings,
             titlebar::set_maximize_rect,
             commands::smart_target,
+            updates::update_check_due,
+            updates::update_check_done,
         ])
         .setup(|app| {
             tray::build(app.handle())?;

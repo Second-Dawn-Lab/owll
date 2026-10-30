@@ -26,6 +26,10 @@ export interface Settings {
   sourceLanguage: string;
   targetLanguage: string;
   lastForeignTarget: string;
+  /** Unix time (seconds) of the last update check; 0 = never. */
+  lastUpdateCheck: number;
+  /** The first-run welcome has been shown or skipped. */
+  onboardingDone: boolean;
 }
 
 /** Used until the backend answers, and by the browser mock. Keep in sync with Rust. */
@@ -52,4 +56,6 @@ export const defaultSettings: Settings = {
   sourceLanguage: "auto",
   targetLanguage: "de",
   lastForeignTarget: "de",
+  lastUpdateCheck: 0,
+  onboardingDone: false,
 };

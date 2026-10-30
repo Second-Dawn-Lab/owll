@@ -45,6 +45,8 @@ jobs:
         working-directory: owll
       - run: pnpm typecheck
         working-directory: owll
+      - run: pnpm test
+        working-directory: owll
       # The Tauri crate embeds the frontend, so it must be built before cargo runs.
       - run: pnpm build
         working-directory: owll

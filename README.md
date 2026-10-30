@@ -1,4 +1,4 @@
-🚧 Work in progress — not released yet.
+
 
 <p align="center">
   <img src="assets/brand/Owl-L_app_icon.png" alt="Owl-L" width="128" />
@@ -20,11 +20,23 @@ Owl-L translates text and screen areas on your own computer. No account, no subs
 
 ## Privacy and offline use
 
-Once a language pack is installed, translation runs fully on your device. The only network access is downloading the language packs you ask for.
+Once a language pack is installed, translation runs fully on your device.
+
+- **No telemetry, no accounts, no analytics, no crash reports.** Owl-L never sends your text, screenshots, files or history anywhere.
+- **What does leave your machine, and when:**
+  - *Language pack downloads*: only when you install a pack, a plain download from [Hugging Face](https://huggingface.co/Second-Dawn-Lab/owll-language-packs) (checked against a checksum). Hugging Face sees the usual connection data (your IP address and the file you ask for).
+  - *Update checks*: at most once a day at startup, and when you click "Check for updates", Owl-L downloads a small file (`latest.json`) from this repository's latest GitHub release. The new installer is downloaded only if you click "Update and restart". GitHub sees the usual connection data.
+- Everything else (translation, text recognition, history, settings) stays on your computer. History can be turned off or cleared in the app.
 
 ## Download
 
-Windows installer: **[Releases](https://github.com/Second-Dawn-Lab/owll/releases)** (placeholder: the first release is coming soon).
+Windows installer: **[Releases](https://github.com/Second-Dawn-Lab/owll/releases)** (the first release is coming soon).
+
+### Windows may warn you
+
+The installer is not code-signed yet, so Windows SmartScreen may show **"Windows protected your PC"** or "Unknown publisher" when you run it. This is expected for new, small apps. To continue, click **More info**, then **Run anyway**. You can compare the installer with the one on the Releases page, and the source code is in this repository. Code signing is planned (see [docs/releasing.md](docs/releasing.md)).
+
+On first start Owl-L offers a short welcome where you choose your languages. The uninstaller keeps the downloaded language packs (other Second Dawn apps may use them) and asks whether to delete Owl-L's own settings and history.
 
 ## Screenshots
 
@@ -32,7 +44,7 @@ _Screenshots will be added here._
 
 ## Credits
 
-Owl-L stands on the shoulders of **OPUS-MT (Helsinki-NLP)**, **CTranslate2**, **Tauri** and **RapidOCR**. Full model attributions are in the app's About screen. Owl-L is an independent project and is not affiliated with DeepL.
+Owl-L stands on the shoulders of **OPUS-MT (Helsinki-NLP)**, **CTranslate2**,and **Tauri** . Full model attributions are in the app's About screen. Owl-L is an independent project and is not affiliated with DeepL.
 
 MIT licensed. See [LICENSE](LICENSE).
 
@@ -105,7 +117,7 @@ CI and releases check out the `dawn-core` commit or tag named in [`dawn-core.ref
 ```text
 src/             React UI (talks to Rust only through src/ipc.ts)
 src-tauri/src/   commands.rs (the API), settings.rs, history.rs, tray.rs, quick.rs, capture.rs, ocr.rs
-docs/            CLONE_SPEC.md (behavioral spec), quick-access.md, ur-ja-models.md
+docs/            CLONE_SPEC.md (behavioral spec), quick-access.md, ur-ja-models.md, releasing.md (releases, updater keys, signing)
 assets/brand/    Owl-L app icon, Second Dawn logo and icon
 dawn-core.ref    pinned dawn-core version for CI and releases
 ```

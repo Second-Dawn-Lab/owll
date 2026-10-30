@@ -771,3 +771,81 @@ html:has(.cap) #root {
   align-items: center;
   gap: 10px;
 }
+
+/* Update notice: small, in the corner, never covers the panes' content for long. */
+.update-notice {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  max-width: 340px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--dw-border, rgba(127, 127, 127, 0.35));
+  border-radius: 10px;
+  background: var(--dw-surface, Canvas);
+  color: var(--dw-text, CanvasText);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+}
+.update-notice--brief {
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 10px;
+}
+.update-notice__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.update-notice__notes {
+  margin: 0;
+  font-size: 0.9em;
+  opacity: 0.8;
+  white-space: pre-line;
+}
+.update-notice__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* First-run welcome */
+.onboarding {
+  display: grid;
+  gap: 12px;
+  min-width: min(440px, 80vw);
+}
+.onboarding p {
+  margin: 0;
+}
+.onboarding__lead {
+  font-size: 1.15em;
+  font-weight: 600;
+}
+.onboarding__points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.onboarding__langs {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.onboarding__lang {
+  display: grid;
+  gap: 4px;
+}
+.onboarding__size,
+.onboarding__note {
+  color: var(--dw-text-2);
+  font-size: 0.9em;
+}
+.onboarding__shortcut {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
