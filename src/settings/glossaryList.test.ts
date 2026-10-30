@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterEntries, newEntry } from "./glossaryList";
+import { filterEntries, newEntry, nextListName } from "./glossaryList";
 
 const entry = (id: number, source: string, target: string, from = "en", to = "de") => ({ ...newEntry(from, to), id, source, target });
 const name = (c: string) => ({ en: "English", de: "German", fr: "French" })[c] ?? c;
@@ -19,5 +19,14 @@ describe("glossary list", () => {
 
   it("a new entry has the defaults the engine expects", () => {
     expect(newEntry("en", "de")).toMatchObject({ id: 0, enabled: true, wholeWord: true, matchCase: false });
+  });
+});
+
+describe("new glossary names", () => {
+  it("uses the base name first and then numbers", () => {
+    expect(nextListName([], "New glossary")).toBe("New glossary");
+    expect(nextListName(["My glossary"], "New glossary")).toBe("New glossary");
+    expect(nextListName(["New glossary"], "New glossary")).toBe("New glossary 2");
+    expect(nextListName(["new glossary", "New glossary 2"], "New glossary")).toBe("New glossary 3");
   });
 });

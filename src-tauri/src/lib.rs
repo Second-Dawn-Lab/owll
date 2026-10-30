@@ -13,6 +13,7 @@ mod smart;
 mod titlebar;
 mod tray;
 mod updates;
+mod webview;
 
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
@@ -20,6 +21,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use commands::AppState;
 
 pub fn run() {
+    let (glossary_store, migrated_glossary) = glossary::GlossaryStore::load();
     tauri::Builder::default()
         // Must be registered first: a second launch just brings the running window forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main(app)))
@@ -28,7 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(AppState::load())
-        .manage(glossary::GlossaryStore::load())
+        .manage(glossary_store)
         .manage(docs::DocJob::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(quick::Quick::new())
@@ -39,8 +41,9 @@ pub fn run() {
             commands::detect_language,
             commands::alternatives,
             commands::pin_translation,
-            glossary::glossary_get,
-            glossary::glossary_set,
+            glossary::glossaries_get,
+            glossary::glossaries_set,
+            glossary::glossary_set_active,
             glossary::glossary_import_csv,
             glossary::glossary_export_csv,
             glossary::glossary_clear,
@@ -96,9 +99,15 @@ pub fn run() {
             updates::update_check_due,
             updates::update_check_done,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             tray::build(app.handle())?;
+            glossary::adopt_migrated_choice(app.handle(), migrated_glossary.clone());
             glossary::apply(app.handle());
+            for label in ["main", "quick"] {
+                if let Some(window) = app.get_webview_window(label) {
+                    webview::disable_browser_accelerators(&window);
+                }
+            }
             let wanted = app.state::<AppState>().settings.lock().unwrap().launch_at_start;
             commands::apply_autostart(app.handle(), wanted);
             quick::reconfigure(app.handle());

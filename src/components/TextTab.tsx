@@ -7,6 +7,7 @@ import { settingsStore } from "../settings/store";
 import { trace } from "../trace";
 import { CopyButton } from "./CopyButton";
 import { DetectionNotice } from "./DetectionNotice";
+import { GlossaryPicker, useGlossaryVersion } from "./GlossaryPicker";
 import { ResultText } from "./ResultText";
 import { LanguagePicker } from "./LanguagePicker";
 import { packErrorText } from "./packText";
@@ -39,7 +40,8 @@ export function TextTab({
 
   const packs = usePacks();
   const input = useUndoableText("");
-  const state = useTranslator(input.text, from, to, packs.epoch, {
+  const glossaryVersion = useGlossaryVersion();
+  const state = useTranslator(input.text, from, to, packs.epoch * 1000 + glossaryVersion + settings.glossaryActive.length * 7, {
     // A language is usable when it is built in or active; while the list loads, assume yes.
     isUsable: (code) => !packs.loaded || !!packs.languages.find((l) => l.code === code && (l.builtIn || l.installed)),
     // Source and target were the same language: show the target that was used instead.
@@ -214,6 +216,7 @@ export function TextTab({
           languages={packs.languages}
           onChange={(code) => choose("targetLanguage", code)}
         />
+        <GlossaryPicker />
       </div>
 
       {capture && (

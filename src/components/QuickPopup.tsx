@@ -9,6 +9,7 @@ import { CopyButton } from "./CopyButton";
 import { ocrProblemText } from "./packText";
 import { DetectionNotice } from "./DetectionNotice";
 import { LanguagePicker } from "./LanguagePicker";
+import { useGlossaryVersion } from "./GlossaryPicker";
 import { ResultText } from "./ResultText";
 import { usePacks } from "./usePacks";
 import { useTranslator } from "./useTranslator";
@@ -37,7 +38,8 @@ export function QuickPopup() {
   const sourceRef = useRef<HTMLTextAreaElement>(null);
 
   // The text arrives complete, so translation starts at once; typing in an empty popup is debounced.
-  const state = useTranslator(text, from, settings.targetLanguage, packs.epoch, {
+  const glossaryVersion = useGlossaryVersion();
+  const state = useTranslator(text, from, settings.targetLanguage, packs.epoch * 1000 + glossaryVersion + settings.glossaryActive.length * 7, {
     debounceMs: typed ? 300 : 0,
     isUsable: (code) => !packs.loaded || !!packs.languages.find((l) => l.code === code && (l.builtIn || l.installed)),
   });
@@ -208,6 +210,11 @@ export function QuickPopup() {
       <footer className="quick__foot">
         <span className="pane__meta">
           {state.status === "translating" && state.result && <Spinner />}
+          {state.status === "done" && state.glossaryHits > 0 && (
+            <span className="pane__via" title={t("gloss.applied", { count: state.glossaryHits })}>
+              <Icon name="text" size={13} /> {t("gloss.applied", { count: state.glossaryHits })}
+            </span>
+          )}
           {state.status === "done" && state.pivoted && (
             <span className="pane__via" title={t("text.viaEnglishHint")}>
               <Icon name="swap" size={13} />

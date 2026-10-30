@@ -32,7 +32,7 @@ export function MainWindow() {
   /** An area capture shown in the Images tab. */
   const [captured, setCaptured] = useState<CaptureResult | null>(null);
   /** A document or picture dropped on the window (Tauri reports its path). */
-  const [droppedDoc, setDroppedDoc] = useState<{ path: string; n: number } | null>(null);
+  const [droppedDocs, setDroppedDocs] = useState<{ paths: string[]; n: number } | null>(null);
   const [droppedImage, setDroppedImage] = useState<{ path: string; n: number } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -94,18 +94,18 @@ export function MainWindow() {
       ? import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
           getCurrentWebview().onDragDropEvent((event) => {
             if (event.payload.type !== "drop") return;
-            for (const path of event.payload.paths) {
-              const target = dropTarget(path);
-              if (target === "document") {
-                setDroppedDoc({ path, n: ++n });
-                setTab("files");
-                return;
-              }
-              if (target === "image") {
-                setDroppedImage({ path, n: ++n });
-                setTab("images");
-                return;
-              }
+            const paths = event.payload.paths;
+            // Several documents of any mix of types go to the Files tab together.
+            const documents = paths.filter((p) => dropTarget(p) === "document");
+            if (documents.length > 0) {
+              setDroppedDocs({ paths: documents, n: ++n });
+              setTab("files");
+              return;
+            }
+            const image = paths.find((p) => dropTarget(p) === "image");
+            if (image) {
+              setDroppedImage({ path: image, n: ++n });
+              setTab("images");
             }
           }),
         )
@@ -151,7 +151,7 @@ export function MainWindow() {
           <TextTab incoming={incoming} quick={quick} capture={captureNote} onDismissCapture={() => setCaptureNote(null)} />
         </div>
         {tab === "images" && <ImagesTab captured={captured} dropped={droppedImage} />}
-        {tab === "files" && <FilesTab incomingPath={droppedDoc} />}
+        {tab === "files" && <FilesTab incoming={droppedDocs} />}
         {tab === "history" && (
           <HistoryTab
             onUse={(entry) => {

@@ -3,6 +3,7 @@ title Owl-L (dev)
 cd /d "%~dp0"
 
 where pnpm >nul 2>nul
+set CARGO_INCREMENTAL=0
 if errorlevel 1 (
     echo pnpm not found. Run: npm install -g pnpm
     pause

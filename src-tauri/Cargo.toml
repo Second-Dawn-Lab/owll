@@ -37,6 +37,12 @@ dawn-models = { path = "../../dawn-core/crates/dawn-models" }
 dawn-ocr = { path = "../../dawn-core/crates/dawn-ocr" }
 dawn-translate = { path = "../../dawn-core/crates/dawn-translate" }
 
+# Turns off WebView2's built-in browser shortcuts (Ctrl+Shift+O opens its bookmarks, F5 reloads, Ctrl+P prints)
+# in Owl-L's windows. The same versions Tauri itself uses, so nothing new is compiled.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows-core = "0.62"
+
 # Snap Layouts for the custom title bar (see src/titlebar.rs): window hit testing needs Win32.
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.61"

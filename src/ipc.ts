@@ -158,6 +158,10 @@ export interface Alternative {
   word: string;
   /** The whole sentence with this word. */
   text: string;
+  /** How the sentence continues from the word on ("erstaunt. ..."). */
+  preview: string;
+  /** The word that stands there now (listed first). */
+  current: boolean;
 }
 
 export interface GlossaryEntry {
@@ -171,9 +175,17 @@ export interface GlossaryEntry {
   enabled: boolean;
 }
 
-export interface Glossary {
-  enabled: boolean;
+/** One named glossary: its own list of terms. */
+export interface NamedGlossary {
+  id: string;
+  name: string;
+  from: string | null;
+  to: string | null;
   entries: GlossaryEntry[];
+}
+
+export interface Glossaries {
+  lists: NamedGlossary[];
 }
 
 export interface DocInfo {
@@ -291,16 +303,21 @@ export const ipc = {
   quickOpenInMain: (text: string) => call<void>("quick_open_in_main", { text }),
   quickBlockApp: (name: string) => call<void>("quick_block_app", { name }),
   takeQuickText: () => call<string | null>("take_quick_text"),
-  alternatives: (from: string, to: string, input: string, prefix: string, current: string) => call<Alternative[]>("alternatives", { from, to, input, prefix, current }),
+  alternatives: (from: string, to: string, input: string, sentence: string, wordStart: number, current: string) =>
+    call<Alternative[]>("alternatives", { from, to, input, sentence, wordStart, current }),
   pinTranslation: (from: string, to: string, source: string, input: string, translation: string) =>
     void call<void>("pin_translation", { from, to, source, input, translation }),
-  glossaryGet: () => call<Glossary>("glossary_get"),
-  glossarySet: (glossary: Glossary) => call<Glossary>("glossary_set", { glossary }),
-  glossaryImportCsv: (text: string, from: string, to: string) => call<{ added: number; updated: number; skipped: number; glossary: Glossary }>("glossary_import_csv", { text, from, to }),
-  glossaryExportCsv: () => call<string>("glossary_export_csv"),
-  glossaryClear: () => call<Glossary>("glossary_clear"),
+  glossariesGet: () => call<Glossaries>("glossaries_get"),
+  glossariesSet: (glossaries: Glossaries) => call<Glossaries>("glossaries_set", { glossaries }),
+  /** Switch to the glossary with this id, or off with "". Shared by the Text tab, the Files tab and the popup. */
+  glossarySetActive: (id: string) => call<void>("glossary_set_active", { id }),
+  glossaryImportCsv: (list: string, text: string, from: string, to: string) =>
+    call<{ added: number; updated: number; skipped: number; glossaries: Glossaries }>("glossary_import_csv", { list, text, from, to }),
+  glossaryExportCsv: (list: string) => call<string>("glossary_export_csv", { list }),
+  glossaryClear: () => call<Glossaries>("glossary_clear"),
+  onGlossaryChanged: (cb: () => void) => on<null>("glossary-changed", cb),
   docInspect: (path: string) => call<DocInfo>("doc_inspect", { path }),
-  docDefaultOutput: (path: string, to: string) => call<string>("doc_default_output", { path, to }),
+  docDefaultOutput: (path: string, to: string, dir?: string | null) => call<string>("doc_default_output", { path, to, dir: dir ?? null }),
   docTranslate: (path: string, from: string, to: string, output: string) => call<void>("doc_translate", { path, from, to, output }),
   docCancel: () => call<void>("doc_cancel"),
   docOpen: (path: string) => call<void>("doc_open", { path }),

@@ -45,6 +45,12 @@ pub struct Settings {
     pub onboarding_done: bool,
     /// Where an area capture shows its result: "main" (the Images tab) | "popup" (the small quick window).
     pub capture_result_in: String,
+    /// The glossary in use ("" = none): shared by the Text tab, the Files tab and the quick popup.
+    pub glossary_active: String,
+    /// The last answer to the PDF question: "docx" (convert to Word) | "pdf" (keep as PDF).
+    pub pdf_output: String,
+    /// Ask that question before every batch with PDFs.
+    pub pdf_ask: bool,
 }
 
 impl Default for Settings {
@@ -76,6 +82,9 @@ impl Default for Settings {
             last_update_check: 0,
             onboarding_done: false,
             capture_result_in: "main".into(),
+            glossary_active: String::new(),
+            pdf_output: "docx".into(),
+            pdf_ask: true,
         }
     }
 }

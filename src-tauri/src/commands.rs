@@ -149,24 +149,31 @@ impl From<dawn_translate::Translation> for TranslateOut {
 #[derive(Serialize)]
 pub struct AlternativeOut {
     word: String,
+    /// The whole sentence when this word is chosen.
     text: String,
+    /// How the sentence continues from the word ("erstaunt. ...").
+    preview: String,
+    /// The word that stands there now.
+    current: bool,
 }
 
-/// Alternatives for the word after `prefix` in the translation of `input` (a segment's `input`).
-/// Slow the first time (the model is loaded for it), so it runs off the UI thread.
+/// Alternatives for the word that starts at UTF-16 offset `word_start` of `sentence` (a segment's `target`;
+/// `input` is its `input`). The current word comes first. Slow the first time (the model is loaded for it),
+/// so it runs off the UI thread.
 #[tauri::command]
-pub async fn alternatives(state: State<'_, AppState>, from: String, to: String, input: String, prefix: String, current: String) -> CmdResult<Vec<AlternativeOut>> {
+#[allow(clippy::too_many_arguments)]
+pub async fn alternatives(state: State<'_, AppState>, from: String, to: String, input: String, sentence: String, word_start: usize, current: String) -> CmdResult<Vec<AlternativeOut>> {
     let engine = state.engine.clone();
     let catalog = state.catalog.clone();
     let started = Instant::now();
-    let found = tauri::async_runtime::spawn_blocking(move || engine.alternatives(&from, &to, &input, &prefix, 5))
+    let found = tauri::async_runtime::spawn_blocking(move || engine.alternatives(&from, &to, &input, &sentence, word_start, &current, 10))
         .await
         .map_err(|e| CmdError::new("engine", e))?
         .map_err(|e| translate_error(&catalog, e))?;
     if trace_enabled() {
         trace_line(&format!("backend: alternatives in {} ms", started.elapsed().as_millis()));
     }
-    Ok(dawn_translate::dedupe_alternatives(found, &current, 5).into_iter().map(|a| AlternativeOut { word: a.word, text: a.text }).collect())
+    Ok(found.into_iter().map(|a| AlternativeOut { word: a.word, text: a.text, preview: a.preview, current: a.current }).collect())
 }
 
 /// Keep the user's pick for a sentence, so live re-translation does not undo it.

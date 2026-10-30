@@ -123,14 +123,20 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
     }
     case "alternatives": {
       await sleep(150);
-      return out([{ word: "Alternative", text: "Mock alternative sentence." }, { word: "Other", text: "Mock other sentence." }]);
+      return out([
+        { word: "Current", text: "Mock sentence.", preview: "Current ...", current: true },
+        { word: "Alternative", text: "Mock alternative sentence.", preview: "Alternative sentence. ...", current: false },
+        { word: "Other", text: "Mock other sentence.", preview: "Other sentence. ...", current: false },
+      ]);
     }
     case "pin_translation":
       return out(undefined);
-    case "glossary_get":
-      return out({ enabled: true, entries: [] });
-    case "glossary_set":
-      return out(a.glossary);
+    case "glossaries_get":
+      return out({ lists: [{ id: "g1", name: "My glossary", from: null, to: null, entries: [] }] });
+    case "glossaries_set":
+      return out(a.glossaries);
+    case "glossary_set_active":
+      return out(undefined);
     case "glossary_export_csv":
       return out("source,target,from,to,match_case,whole_word,enabled\n");
     case "doc_inspect":

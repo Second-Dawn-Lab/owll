@@ -117,9 +117,10 @@ pub async fn doc_inspect(state: State<'_, AppState>, path: String) -> CmdResult<
 
 /// Where the translated file goes by default: `name (DE).ext`, in the download folder when one is set.
 #[tauri::command]
-pub fn doc_default_output(state: State<'_, AppState>, path: String, to: String) -> String {
+pub fn doc_default_output(state: State<'_, AppState>, path: String, to: String, dir: Option<String>) -> String {
+    // A folder chosen for this batch wins, then the download folder of the settings, else next to the original.
     let setting = state.settings.lock().unwrap().download_location.clone();
-    let dir = (setting != "ask" && !setting.is_empty()).then(|| PathBuf::from(setting));
+    let dir = dir.filter(|d| !d.is_empty()).map(PathBuf::from).or_else(|| (setting != "ask" && !setting.is_empty()).then(|| PathBuf::from(setting)));
     dawn_docs::default_output_path(Path::new(&path), &to, dir.as_deref()).to_string_lossy().into_owned()
 }
 

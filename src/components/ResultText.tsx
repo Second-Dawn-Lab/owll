@@ -23,6 +23,7 @@ interface Open {
   items: Alternative[] | null;
   error: boolean;
   selected: number;
+  tab: "alternatives" | "dictionary";
 }
 
 /**
@@ -36,6 +37,7 @@ export function ResultText({ text, segments, from, to, onPick, dimmed }: Props) 
   const [open, setOpen] = useState<Open | null>(null);
   const [cursor, setCursor] = useState(-1);
   const listRef = useRef<HTMLUListElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLSpanElement>(null);
   const request = useRef(0);
   const enabled = segments.length > 0;
@@ -51,12 +53,12 @@ export function ResultText({ text, segments, from, to, onPick, dimmed }: Props) 
     const rect = at ?? rootRef.current?.querySelector<HTMLElement>(`[data-word="${index}"]`)?.getBoundingClientRect();
     const id = ++request.current;
     setCursor(index);
-    setOpen({ word, segment: seg, x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + 4, items: null, error: false, selected: 0 });
+    setOpen({ word, segment: seg, x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + 4, items: null, error: false, selected: 0, tab: "alternatives" });
     try {
       const s = segments[seg];
-      const prefix = s.target.slice(0, word.start - s.start);
-      const items = await ipc.alternatives(from, to, s.input, prefix, word.text);
-      if (id === request.current) setOpen((o) => (o ? { ...o, items, selected: 0 } : o));
+      const items = await ipc.alternatives(from, to, s.input, s.target, word.start - s.start, word.text);
+      // The first item is the current word: start on the next one, there is nothing to choose in the first.
+      if (id === request.current) setOpen((o) => (o ? { ...o, items, selected: items.length > 1 ? 1 : 0 } : o));
     } catch {
       if (id === request.current) setOpen((o) => (o ? { ...o, items: [], error: true } : o));
     }
@@ -64,6 +66,11 @@ export function ResultText({ text, segments, from, to, onPick, dimmed }: Props) 
 
   const choose = (alt: Alternative) => {
     if (!open) return;
+    // The current word is listed so the user sees where the sentence stands; choosing it changes nothing.
+    if (alt.current) {
+      setOpen(null);
+      return;
+    }
     const s = segments[open.segment];
     ipc.pinTranslation(from, to, s.source, s.input, alt.text);
     onPick(open.segment, alt.text);
@@ -72,7 +79,7 @@ export function ResultText({ text, segments, from, to, onPick, dimmed }: Props) 
 
   // Keep the open list inside the window.
   useEffect(() => {
-    const list = listRef.current;
+    const list = panelRef.current;
     if (!open || !list) return;
     const box = list.getBoundingClientRect();
     const fit = placeDropdown({
@@ -82,7 +89,7 @@ export function ResultText({ text, segments, from, to, onPick, dimmed }: Props) 
       chromeHeight: 0,
       listHeight: list.scrollHeight,
     });
-    list.style.maxHeight = `${fit.listMaxHeight}px`;
+    list.style.maxHeight = `${Math.max(fit.listMaxHeight, 160)}px`;
     list.style.left = `${Math.max(8, Math.min(open.x, window.innerWidth - box.width - 8))}px`;
     list.style.top = fit.flipUp ? `${Math.max(8, open.y - 4 - 18 - Math.min(list.scrollHeight, fit.listMaxHeight) - 8)}px` : `${open.y}px`;
   }, [open]);
@@ -90,7 +97,7 @@ export function ResultText({ text, segments, from, to, onPick, dimmed }: Props) 
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (!listRef.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest?.("[data-word]")) setOpen(null);
+      if (!panelRef.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest?.("[data-word]")) setOpen(null);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
@@ -155,22 +162,45 @@ export function ResultText({ text, segments, from, to, onPick, dimmed }: Props) 
       title={t("alt.hint")}
       onKeyDown={onKeyDown}
       onBlur={(e) => {
-        if (!listRef.current?.contains(e.relatedTarget as Node)) setCursor(-1);
+        if (!panelRef.current?.contains(e.relatedTarget as Node)) setCursor(-1);
       }}
     >
       {parts}
       {open && (
-        <ul ref={listRef} className="alts" role="listbox" aria-label={t("alt.title")} style={{ left: open.x, top: open.y }}>
-          {open.items === null && <li className="alts__note">{t("alt.loading")}</li>}
-          {open.items?.length === 0 && <li className="alts__note">{open.error ? t("alt.error") : t("alt.none")}</li>}
-          {open.items?.map((alt, i) => (
-            <li key={alt.word + i} role="option" aria-selected={i === open.selected}>
-              <button type="button" className={`alts__item${i === open.selected ? " alts__item--on" : ""}`} onClick={() => choose(alt)} title={alt.text}>
-                {alt.word}
+        <div ref={panelRef} className="alts" role="dialog" aria-label={t("alt.title")} style={{ left: open.x, top: open.y }}>
+          <div className="alts__head">
+            <strong>{t("alt.header", { word: open.word.text })}</strong>
+            <button type="button" className="alts__close" aria-label={t("alt.close")} onClick={() => setOpen(null)}>
+              {"\u00d7"}
+            </button>
+          </div>
+          <div className="alts__tabs" role="tablist">
+            {(["alternatives", "dictionary"] as const).map((tab) => (
+              <button key={tab} type="button" role="tab" aria-selected={open.tab === tab} className={`alts__tab${open.tab === tab ? " alts__tab--on" : ""}`} onClick={() => setOpen({ ...open, tab })}>
+                {t(tab === "alternatives" ? "alt.tab.alternatives" : "alt.tab.dictionary")}
               </button>
-            </li>
-          ))}
-        </ul>
+            ))}
+          </div>
+          {open.tab === "dictionary" ? (
+            <p className="alts__note">{t("alt.dictionarySoon")}</p>
+          ) : (
+            <ul ref={listRef} className="alts__list" role="listbox" aria-label={t("alt.title")}>
+              {open.items === null && <li className="alts__note">{t("alt.loading")}</li>}
+              {open.items && open.items.length <= 1 && <li className="alts__note">{open.error ? t("alt.error") : t("alt.none")}</li>}
+              {open.items?.map((alt, i) => (
+                <li key={alt.word + i} role="option" aria-selected={i === open.selected}>
+                  <button type="button" className={`alts__item${i === open.selected ? " alts__item--on" : ""}`} onClick={() => choose(alt)} title={alt.text}>
+                    <span className="alts__word">
+                      {alt.word}
+                      {alt.current && <span className="alts__badge">{t("alt.current")}</span>}
+                    </span>
+                    <span className="alts__preview">{alt.preview}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </span>
   );

@@ -32,6 +32,12 @@ export interface Settings {
   onboardingDone: boolean;
   /** Where an area capture shows its result. */
   captureResultIn: "main" | "popup";
+  /** The glossary in use (id), "" for none. */
+  glossaryActive: string;
+  /** The last answer to the PDF question. */
+  pdfOutput: "pdf" | "docx";
+  /** Ask the PDF question before every batch with PDFs. */
+  pdfAsk: boolean;
 }
 
 /** Used until the backend answers, and by the browser mock. Keep in sync with Rust. */
@@ -61,4 +67,7 @@ export const defaultSettings: Settings = {
   lastUpdateCheck: 0,
   onboardingDone: false,
   captureResultIn: "main",
+  glossaryActive: "",
+  pdfOutput: "docx",
+  pdfAsk: true,
 };
