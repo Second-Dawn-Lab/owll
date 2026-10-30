@@ -3,6 +3,16 @@
 All notable changes to Owl-L. The newest version is first. The text of a version's section is used
 as the release notes and shown in the in-app update notice.
 
+## [0.2.0](https://github.com/Second-Dawn-Lab/owll/compare/v0.1.1...v0.2.0) (2026-10-30)
+
+
+### Features
+
+* Files tab target, glossary highlights, sentence alternatives and glossary page ([d379c4b](https://github.com/Second-Dawn-Lab/owll/commit/d379c4bad37d3ad956d35c9db7f9a8eda3cb6d57))
+* Files tab, word alternatives, glossary page and capture improvements ([388d71c](https://github.com/Second-Dawn-Lab/owll/commit/388d71c3fd3bc289921b861933307521c6a79909))
+* multi-file queue, named glossaries, alternatives panel, capture shortcut in text box ([1ee1c3f](https://github.com/Second-Dawn-Lab/owll/commit/1ee1c3f68ccabce7a0496a5d75ec01684f86836d))
+* themed glossary tooltip, alternatives at the bottom and stacked glossary form ([c7cff23](https://github.com/Second-Dawn-Lab/owll/commit/c7cff232f247186e8fa4d1e576ab90564a736ded))
+
 ## [0.1.1](https://github.com/Second-Dawn-Lab/owll/compare/v0.1.0...v0.1.1) (2026-10-30)
 
 
