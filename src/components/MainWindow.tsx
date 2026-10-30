@@ -2,7 +2,7 @@ import { Button, Chip, Dialog, Menu, Nav, type MenuEntry, type NavItem } from "@
 import { useSettings } from "@seconddawn/settings";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
-import { ipc, isTauri, type CaptureResult, type HistoryEntry } from "../ipc";
+import { ipc, isTauri, type CaptureResult, type DraftInfo, type HistoryEntry } from "../ipc";
 import { settingsStore } from "../settings/store";
 import { checkForUpdate, quietCheckAtStartup } from "../updater";
 import { AboutCard } from "./AboutCard";
@@ -12,6 +12,7 @@ import { FilesTab } from "./FilesTab";
 import { HistoryTab } from "./HistoryTab";
 import { Onboarding } from "./Onboarding";
 import { dropTarget } from "./docFiles";
+import { EditorView } from "./EditorView";
 import { ImagesTab } from "./ImagesTab";
 import { TextTab } from "./TextTab";
 import { UpdateNotice } from "./UpdateNotice";
@@ -35,6 +36,23 @@ export function MainWindow() {
   const [droppedDocs, setDroppedDocs] = useState<{ paths: string[]; n: number } | null>(null);
   const [droppedImage, setDroppedImage] = useState<{ path: string; n: number } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** The draft open in the editor, and a counter that tells the drafts list to reload when the editor closes. */
+  const [editing, setEditing] = useState<{ draftId: string; n: number } | null>(null);
+  const [draftsKey, setDraftsKey] = useState(0);
+  const editCount = useRef(0);
+  /** An unfinished edit found at start: "Continue editing <file>?" */
+  const [resumeOffer, setResumeOffer] = useState<DraftInfo | null>(null);
+  useEffect(() => {
+    void ipc
+      .draftsList()
+      .then((list) => setResumeOffer(list.find((d) => d.edited > 0 && d.status !== "missing") ?? null))
+      .catch(() => undefined);
+  }, []);
+  const openEditor = (draftId: string) => setEditing({ draftId, n: ++editCount.current });
+  const closeEditor = () => {
+    setEditing(null);
+    setDraftsKey((k) => k + 1);
+  };
   const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
@@ -137,7 +155,17 @@ export function MainWindow() {
     <div className="shell">
       <header className="topbar" data-tauri-drag-region>
         <Menu label={t("menu.open")} icon="menu" entries={menu} open={menuOpen} onOpenChange={setMenuOpen} />
-        <Nav variant="bar" label={t("nav.main")} items={tabs} value={tab} onChange={setTab} />
+        <Nav
+          variant="bar"
+          label={t("nav.main")}
+          items={tabs}
+          value={tab}
+          onChange={(next) => {
+            // Leaving the editor keeps its draft; it can be continued from the Files tab.
+            if (editing) closeEditor();
+            setTab(next);
+          }}
+        />
         <span className="topbar__spacer" data-tauri-drag-region />
         <Chip tone="success" icon="shield" title={t("chip.offlineHint")}>
           {t("chip.offline")}
@@ -147,12 +175,18 @@ export function MainWindow() {
 
       <main className="content">
         {/* The text tab stays mounted so unsent text and undo history survive tab switches. */}
-        <div className="tabpanel" hidden={tab !== "text"}>
+        <div className="tabpanel" hidden={tab !== "text" || !!editing}>
           <TextTab incoming={incoming} quick={quick} capture={captureNote} onDismissCapture={() => setCaptureNote(null)} />
         </div>
-        {tab === "images" && <ImagesTab captured={captured} dropped={droppedImage} />}
-        {tab === "files" && <FilesTab incoming={droppedDocs} />}
-        {tab === "history" && (
+        {tab === "images" && !editing && <ImagesTab captured={captured} dropped={droppedImage} />}
+        {/* The Files tab stays mounted while a document is edited, so its list is still there afterwards. */}
+        {tab === "files" && (
+          <div className="tabpanel" hidden={!!editing}>
+            <FilesTab incoming={droppedDocs} onEdit={openEditor} draftsKey={draftsKey} />
+          </div>
+        )}
+        {editing && <EditorView key={editing.n} draftId={editing.draftId} onClose={closeEditor} />}
+        {tab === "history" && !editing && (
           <HistoryTab
             onUse={(entry) => {
               setIncoming(entry);
@@ -171,6 +205,31 @@ export function MainWindow() {
         <div className="dw-section__body">
           <AboutCard />
         </div>
+      </Dialog>
+
+      <Dialog
+        open={resumeOffer !== null}
+        title={t("ed.continueTitle")}
+        onClose={() => setResumeOffer(null)}
+        footer={
+          <>
+            <Button onClick={() => setResumeOffer(null)}>{t("ed.later")}</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (resumeOffer) {
+                  setTab("files");
+                  openEditor(resumeOffer.id);
+                }
+                setResumeOffer(null);
+              }}
+            >
+              {t("drafts.continue")}
+            </Button>
+          </>
+        }
+      >
+        <p>{t("ed.continueBody", { name: resumeOffer?.name ?? "" })}</p>
       </Dialog>
 
       <Onboarding />

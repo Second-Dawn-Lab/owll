@@ -145,6 +145,47 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
       return out({ path: a.path, name: String(a.path).split(/[\\/]/).pop(), kind: "docx", sizeBytes: 1234, detection: "ok", detected: "en", tooLarge: false });
     case "doc_default_output":
       return out(String(a.path).replace(/(\.[^.]+)$/, ` (${String(a.to).toUpperCase()})$1`));
+    case "edit_start":
+      await sleep(400);
+      emit("edit-translated", { draftId: "0123456789abcdef", path: a.path, kind: "docx", units: 300, skipped: [] });
+      return out(undefined);
+    case "edit_resume": {
+      const segments = Array.from({ length: 400 }, (_, i) => {
+        const kept = i % 25 === 7;
+        const marked = i % 9 === 3;
+        const source = kept ? `${2000 + i}` : marked ? `{1}Please read the {/1}{2}user manual{/2}{3} carefully, number ${i}.{/3}` : `This is paragraph number ${i}, and it has a few more words so that it wraps onto a second line in the editor.`;
+        return {
+          unit: kept ? null : i,
+          header: { part: i % 2 ? "slide" : "body", name: null, number: Math.floor(i / 4) + 1, cell: null },
+          source,
+          styles: marked ? [0, 1, 0] : [],
+          plain: !marked,
+          translation: kept ? null : marked ? `{1}Bitte lesen Sie die {/1}{2}Bedienungsanleitung{/2}{3} sorgf\u00e4ltig, Nummer ${i}.{/3}` : `Das ist Absatz Nummer ${i}, und er hat ein paar weitere W\u00f6rter, damit er im Editor auf eine zweite Zeile umbricht.`,
+          base: null,
+          hits: i % 11 === 0 ? 1 : 0,
+          edited: false,
+        };
+      });
+      return out({ path: "C:/Docs/report.docx", name: "report.docx", kind: "docx", from: "en", to: "de", segments, units: 400, skipped: [], resumed: false });
+    }
+    case "edit_analyse": {
+      await sleep(80);
+      const text = String(a.current);
+      const end = text.length;
+      return out({ text, pivoted: false, segments: [{ source: "x", input: "x", target: text, start: 0, end, pinned: false }], glossaryHits: 0, glossaryTerms: [] });
+    }
+    case "edit_retranslate":
+      await sleep(200);
+      return out({ text: `Neu \u00fcbersetzter Absatz ${a.unit}.`, hits: 0 });
+    case "edit_save":
+      await sleep(300);
+      return out({ output: String(a.output), skipped: [] });
+    case "edit_close":
+    case "edit_draft_save":
+    case "draft_delete":
+      return out(undefined);
+    case "drafts_list":
+      return out([]);
     case "doc_translate":
     case "doc_cancel":
     case "doc_open":

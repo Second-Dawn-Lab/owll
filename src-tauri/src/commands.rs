@@ -204,7 +204,7 @@ pub fn pin_translation(state: State<'_, AppState>, from: String, to: String, sou
     state.engine.pin(&from, &to, &source, &input, &translation);
 }
 
-fn translate_error(catalog: &Catalog, err: TranslateError) -> CmdError {
+pub(crate) fn translate_error(catalog: &Catalog, err: TranslateError) -> CmdError {
     match err {
         // The message is the language code the user needs to download.
         TranslateError::ModelMissing(lang) => CmdError::new("pack_missing", lang),

@@ -8,6 +8,7 @@ import * as batchOps from "./batchQueue";
 import type { Batch, BatchItem } from "./batchQueue";
 import { docFailureKey, DOC_EXTENSIONS } from "./docFiles";
 import { formatFileSize, pluralForm } from "./fileSize";
+import { DraftsList } from "./DraftsList";
 import { GlossaryPicker } from "./GlossaryPicker";
 import { LanguagePicker } from "./LanguagePicker";
 import { decidePdf } from "./pdfChoice";
@@ -22,11 +23,13 @@ function iconFor(kind: BatchItem["kind"]): "doc" | "sheet" | "slides" | "pdf" {
  * Files are translated one after another in the background; each result is written next to the original,
  * in the download folder, or where the user chooses, and the originals are never changed.
  */
-export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number } | null }) {
+export function FilesTab({ incoming, onEdit, draftsKey }: { incoming: { paths: string[]; n: number } | null; onEdit: (draftId: string) => void; draftsKey: number }) {
   const { t, locale } = useT();
   const { settings, patch } = useSettings(settingsStore);
   const packs = usePacks();
   const [batch, setBatch] = useState<Batch>(batchOps.emptyBatch);
+  const batchRef = useRef(batch);
+  batchRef.current = batch;
   const handled = useRef(0);
   /** Files already being inspected. */
   const inspecting = useRef(new Set<number>());
@@ -70,6 +73,11 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
       ipc.onDocProgress((p) => setBatch((b) => batchOps.progress(b, p.done, p.total))),
       ipc.onDocDone((result) => setBatch((b) => batchOps.finished(b, result))),
       ipc.onDocFailed((f) => setBatch((b) => batchOps.failed(b, { code: f.code, message: f.message }))),
+      ipc.onEditTranslated((d) => {
+        // A single document opens in the editor by itself; for several, each file gets an Edit button.
+        if (batchRef.current.edit && batchRef.current.started === 1) onEdit(d.draftId);
+        setBatch((b) => batchOps.editTranslated(b, d));
+      }),
     ];
     return () => offs.forEach((off) => void off.then((fn) => fn()));
   }, []);
@@ -78,6 +86,10 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
     const from = batchOps.sourceOf(item);
     try {
       if (!from) throw new IpcError("bad_request", "no language");
+      if (batchRef.current.edit) {
+        await ipc.editStart(item.path, from, target);
+        return;
+      }
       const output = await ipc.docDefaultOutput(item.path, target, folder.current);
       await ipc.docTranslate(item.path, from, target, output);
     } catch (e) {
@@ -112,10 +124,13 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
   const startState = batchOps.startState(batch, target);
   const plural = (n: number) => pluralForm(locale, n);
 
-  const translateAll = async () => {
+  const translateAll = async (edit = false) => {
     folder.current = null;
     // "Ask each time": one folder for several files (not a dialog per file), a save dialog for a single one.
-    if (settings.downloadLocation === "ask" && ready.length > 1) {
+    // Translating for editing writes nothing yet: the question comes when the document is saved.
+    if (edit) {
+      // nothing to ask
+    } else if (settings.downloadLocation === "ask" && ready.length > 1) {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const picked = await open({ directory: true, multiple: false, title: t("files.pickFolder") });
       if (typeof picked !== "string") return;
@@ -130,7 +145,7 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
     // PDFs become Word documents until "Keep as PDF" exists; then this is where the question appears.
     void decidePdf(batchOps.pdfItems(ready).length, { pdfOutput: settings.pdfOutput, pdfAsk: settings.pdfAsk });
     started.current = 0;
-    setBatch((b) => batchOps.start(b, target));
+    setBatch((b) => batchOps.start(b, target, edit));
   };
 
   const cancelAll = () => {
@@ -151,6 +166,7 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
   if (batch.items.length === 0) {
     return (
       <div className="files">
+        <DraftsList refreshKey={draftsKey} onContinue={onEdit} />
         <section className="files__drop">
           <Icon name="file" size={40} />
           <p>{t("files.drop")}</p>
@@ -213,7 +229,7 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
                 )}
                 {item.status === "done" && (
                   <>
-                    <Icon name="check" size={16} /> {t("files.status.done")}
+                    <Icon name="check" size={16} /> {item.draftId ? t("files.editReady") : t("files.status.done")}
                   </>
                 )}
                 {item.status === "error" && (
@@ -223,6 +239,11 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
                 )}
               </span>
               <span className="files__rowactions">
+                {item.status === "done" && item.draftId && (
+                  <Button variant="primary" icon="pencil" onClick={() => onEdit(item.draftId!)}>
+                    {t("files.edit")}
+                  </Button>
+                )}
                 {item.status === "done" && item.output && (
                   <>
                     <Button variant="ghost" onClick={() => void ipc.docOpen(item.output!)}>
@@ -265,6 +286,8 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
         })}
       </ul>
 
+      <DraftsList refreshKey={draftsKey} onContinue={onEdit} />
+
       <div className="files__footer">
         {busy ? (
           <>
@@ -279,6 +302,9 @@ export function FilesTab({ incoming }: { incoming: { paths: string[]; n: number 
             </Button>
             <Button variant="primary" disabled={startState.count === 0} onClick={() => void translateAll()}>
               {startState.count === 1 ? t("files.translateOne") : startState.count > 1 ? t("files.translateN", { count: startState.count }) : t("files.translate")}
+            </Button>
+            <Button icon="pencil" disabled={startState.count === 0} onClick={() => void translateAll(true)}>
+              {t("files.translateEdit")}
             </Button>
             {startState.disabledReason && <span className="files__hint">{t(`files.disabled.${startState.disabledReason}` as "files.disabled.empty")}</span>}
             <Button variant="ghost" onClick={() => setBatch(batchOps.clear)}>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DocDone, DocInfo } from "../ipc";
-import { addPaths, busy, cancel, clear, emptyBatch, failed, finished, inspectFailed, inspected, overall, pdfItems, progress, remove, setSource, skipReason, sourceOf, start, startable, startState, takeNext, type Batch } from "./batchQueue";
+import type { DocDone, DocInfo, EditTranslated } from "../ipc";
+import { addPaths, busy, cancel, clear, editTranslated, emptyBatch, failed, finished, inspectFailed, inspected, overall, pdfItems, progress, remove, setSource, skipReason, sourceOf, start, startable, startState, takeNext, type Batch } from "./batchQueue";
 
 const info = (path: string, extra: Partial<DocInfo> = {}): DocInfo => ({ path, name: path.split("/").pop() ?? path, kind: "docx", sizeBytes: 100, detection: "ok", detected: "en", tooLarge: false, ...extra });
 const done = (output: string): DocDone => ({ output, kind: "docx", units: 3, translated: 3, parts: null, skipped: [] });
@@ -177,5 +177,30 @@ describe("clearing the list", () => {
     expect(cleared.items).toEqual([]);
     const again = addPaths(cleared, ["/c.docx"]);
     expect(again.items[0].id).toBeGreaterThan(Math.max(...b.items.map((i) => i.id)));
+  });
+});
+
+describe("translating for editing", () => {
+  const translated = (draftId: string): EditTranslated => ({ draftId, path: "/a.docx", kind: "docx", units: 4, skipped: [] });
+
+  it("each finished file keeps its draft for the Edit button and no output file", () => {
+    let b = start(loaded(["/a.docx", "/b.docx"]), "de", true);
+    expect(b.edit).toBe(true);
+    expect(b.started).toBe(2);
+    b = takeNext(b).batch;
+    b = editTranslated(b, translated("d1"));
+    expect(b.items[0]).toMatchObject({ status: "done", draftId: "d1", output: null });
+    b = takeNext(b).batch;
+    b = editTranslated(b, translated("d2"));
+    expect(b.items.map((i) => i.draftId)).toEqual(["d1", "d2"]);
+    expect(busy(b)).toBe(false);
+  });
+
+  it("a plain run is not an edit run, and starting again forgets old drafts", () => {
+    expect(start(loaded(["/a.docx"]), "de").edit).toBe(false);
+    let b = start(loaded(["/a.docx"]), "de", true);
+    b = editTranslated(takeNext(b).batch, translated("d1"));
+    b = { ...b, items: b.items.map((i) => ({ ...i, status: "ready" as const })) };
+    expect(start(b, "de", true).items[0].draftId).toBeNull();
   });
 });

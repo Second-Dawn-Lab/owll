@@ -3,6 +3,7 @@
 mod capture;
 mod commands;
 mod docs;
+mod edit;
 mod glossary;
 mod history;
 mod ocr;
@@ -32,6 +33,7 @@ pub fn run() {
         .manage(AppState::load())
         .manage(glossary_store)
         .manage(docs::DocJob::default())
+        .manage(edit::EditSlot::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(quick::Quick::new())
         .manage(capture::Capture::new())
@@ -52,6 +54,15 @@ pub fn run() {
             docs::doc_default_output,
             docs::doc_translate,
             docs::doc_cancel,
+            edit::edit_start,
+            edit::edit_resume,
+            edit::edit_draft_save,
+            edit::edit_analyse,
+            edit::edit_retranslate,
+            edit::edit_save,
+            edit::edit_close,
+            edit::drafts_list,
+            edit::draft_delete,
             docs::doc_open,
             docs::doc_show_in_folder,
             docs::read_dropped_file,

@@ -20,14 +20,46 @@ use crate::commands::{AppState, CmdError, CmdResult};
 #[derive(Default)]
 pub struct DocJob(Mutex<Option<Arc<AtomicBool>>>);
 
+impl DocJob {
+    /// Take the one job slot; `busy` when a document is already being translated.
+    pub fn begin(&self, cancel: Arc<AtomicBool>) -> CmdResult<()> {
+        let mut slot = self.0.lock().unwrap();
+        if slot.is_some() {
+            return Err(CmdError::new("busy", "a document is already being translated"));
+        }
+        *slot = Some(cancel);
+        Ok(())
+    }
+
+    pub fn end(&self) {
+        *self.0.lock().unwrap() = None;
+    }
+}
+
 /// Runs document texts through the engine. The first engine error is kept so the window can offer
 /// "download the language pack" instead of a bare failure.
-struct EngineTranslator {
+pub(crate) struct EngineTranslator {
     engine: Arc<Ct2Engine>,
     from: String,
     to: String,
     cancel: Arc<AtomicBool>,
     error: Option<TranslateError>,
+    /// Glossary terms put in, by the text that was translated (for the editor's "Glossary applied" filter).
+    hits: std::collections::HashMap<String, usize>,
+}
+
+impl EngineTranslator {
+    pub(crate) fn new(engine: Arc<Ct2Engine>, from: String, to: String, cancel: Arc<AtomicBool>) -> Self {
+        Self { engine, from, to, cancel, error: None, hits: Default::default() }
+    }
+
+    pub(crate) fn take_error(&mut self) -> Option<TranslateError> {
+        self.error.take()
+    }
+
+    pub(crate) fn hits_for(&self, text: &str) -> usize {
+        self.hits.get(text).copied().unwrap_or(0)
+    }
 }
 
 impl Translator for EngineTranslator {
@@ -36,7 +68,12 @@ impl Translator for EngineTranslator {
         let mut out = Vec::with_capacity(texts.len());
         for text in texts {
             match self.engine.translate_streaming(text, &self.from, &self.to, &self.cancel, &options, &mut |_| {}) {
-                Ok(t) => out.push(t.text),
+                Ok(t) => {
+                    if t.glossary_hits > 0 {
+                        self.hits.insert(text.clone(), t.glossary_hits);
+                    }
+                    out.push(t.text);
+                }
                 Err(TranslateError::Cancelled) => return Err(DocError::Cancelled),
                 Err(err) => {
                     let message = err.to_string();
@@ -68,7 +105,7 @@ pub struct DocInfo {
     too_large: bool,
 }
 
-fn kind_name(kind: Kind) -> &'static str {
+pub(crate) fn kind_name(kind: Kind) -> &'static str {
     match kind {
         Kind::Docx => "docx",
         Kind::Pptx => "pptx",
@@ -125,9 +162,9 @@ pub fn doc_default_output(state: State<'_, AppState>, path: String, to: String, 
 }
 
 #[derive(Serialize, Clone)]
-struct DocProgress {
-    done: usize,
-    total: usize,
+pub(crate) struct DocProgress {
+    pub(crate) done: usize,
+    pub(crate) total: usize,
 }
 
 #[derive(Serialize, Clone)]
@@ -142,12 +179,12 @@ struct DocDone {
 }
 
 #[derive(Serialize, Clone)]
-struct DocFailed {
+pub(crate) struct DocFailed {
     code: String,
     message: String,
 }
 
-fn failure(error: &Option<TranslateError>, err: DocError, catalog: &dawn_models::Catalog) -> DocFailed {
+pub(crate) fn failure(error: &Option<TranslateError>, err: DocError, catalog: &dawn_models::Catalog) -> DocFailed {
     if let Some(engine_error) = error {
         return match engine_error {
             // The message is the language code the user needs to download.
@@ -167,17 +204,11 @@ pub fn doc_translate(app: AppHandle, state: State<'_, AppState>, job: State<'_, 
         return Err(CmdError::new("bad_request", "source language must be resolved first"));
     }
     let cancel = Arc::new(AtomicBool::new(false));
-    {
-        let mut slot = job.0.lock().unwrap();
-        if slot.is_some() {
-            return Err(CmdError::new("busy", "a document is already being translated"));
-        }
-        *slot = Some(cancel.clone());
-    }
+    job.begin(cancel.clone())?;
     let engine = state.engine.clone();
     let catalog = state.catalog.clone();
     std::thread::spawn(move || {
-        let mut translator = EngineTranslator { engine, from: from.clone(), to: to.clone(), cancel, error: None };
+        let mut translator = EngineTranslator::new(engine, from.clone(), to.clone(), cancel);
         let progress_app = app.clone();
         let result = dawn_docs::translate_document(Path::new(&path), Path::new(&output), &mut translator, &mut |p: Progress| {
             let _ = progress_app.emit("doc-progress", DocProgress { done: p.done, total: p.total });
@@ -191,7 +222,7 @@ pub fn doc_translate(app: AppHandle, state: State<'_, AppState>, job: State<'_, 
                 let _ = app.emit("doc-failed", failure(&translator.error, err, &catalog));
             }
         }
-        *app.state::<DocJob>().0.lock().unwrap() = None;
+        app.state::<DocJob>().end();
     });
     Ok(())
 }
@@ -201,7 +232,7 @@ fn done_payload(output: &str, report: Report) -> DocDone {
 }
 
 /// One history entry per document: its name and the name of the result, never its text.
-fn add_history(app: &AppHandle, from: &str, to: &str, input: &str, output: &str) {
+pub(crate) fn add_history(app: &AppHandle, from: &str, to: &str, input: &str, output: &str) {
     let name = |p: &str| Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let state = app.state::<AppState>();
     if !state.settings.lock().unwrap().keep_history {
@@ -217,6 +248,11 @@ pub fn doc_cancel(job: State<'_, DocJob>) {
     if let Some(cancel) = job.0.lock().unwrap().as_ref() {
         cancel.store(true, Ordering::Relaxed);
     }
+}
+
+/// An engine error as the window gets it (`pack_missing` with the language to download, and so on).
+pub(crate) fn translate_error_out(catalog: &dawn_models::Catalog, err: TranslateError) -> CmdError {
+    crate::commands::translate_error(catalog, err)
 }
 
 /// Windows paths with backslashes only: Explorer does not take a path with forward slashes in `/select,`.

@@ -1,7 +1,7 @@
 // The Files tab's batch: several documents translated one after another. Pure functions on a plain state,
 // so the order, cancelling and removing are tested without the app.
 
-import type { DocDone, DocInfo } from "../ipc";
+import type { DocDone, DocInfo, EditTranslated } from "../ipc";
 
 export type ItemStatus = "inspecting" | "ready" | "waiting" | "translating" | "done" | "error";
 
@@ -20,6 +20,8 @@ export interface BatchItem {
   total: number;
   output: string | null;
   result: DocDone | null;
+  /** Translated for editing: the draft that holds its translation (the Edit button opens it). */
+  draftId: string | null;
   /** A failure: its code (from the backend) and message. */
   error: { code: string; message: string } | null;
 }
@@ -29,9 +31,13 @@ export interface Batch {
   nextId: number;
   /** Running: the next waiting item starts when the current one ends. */
   running: boolean;
+  /** This run translates for editing: nothing is written, each finished file gets an Edit button. */
+  edit: boolean;
+  /** How many files this run started (a single one opens the editor by itself). */
+  started: number;
 }
 
-export const emptyBatch: Batch = { items: [], nextId: 1, running: false };
+export const emptyBatch: Batch = { items: [], nextId: 1, running: false, edit: false, started: 0 };
 
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
@@ -43,7 +49,7 @@ export function addPaths(batch: Batch, paths: string[]): Batch {
   for (const path of paths) {
     if (known.has(path.toLowerCase())) continue;
     known.add(path.toLowerCase());
-    added.push({ id: nextId++, path, name: fileName(path), kind: null, sizeBytes: 0, detected: null, source: "auto", status: "inspecting", done: 0, total: 0, output: null, result: null, error: null });
+    added.push({ id: nextId++, path, name: fileName(path), kind: null, sizeBytes: 0, detected: null, source: "auto", status: "inspecting", done: 0, total: 0, output: null, result: null, draftId: null, error: null });
   }
   return { ...batch, items: [...batch.items, ...added], nextId };
 }
@@ -110,14 +116,14 @@ export function startState(batch: Batch, target: string): StartState {
 
 /** Empty the list but keep counting ids: a new file must never get the id of an old one (the page remembers which ids it looked at). */
 export function clear(batch: Batch): Batch {
-  return { items: [], nextId: batch.nextId, running: false };
+  return { items: [], nextId: batch.nextId, running: false, edit: false, started: 0 };
 }
 
 /** Queue every startable file; the first one is taken by `takeNext`. */
-export function start(batch: Batch, target: string): Batch {
+export function start(batch: Batch, target: string, edit = false): Batch {
   const ids = new Set(startable(batch, target).map((i) => i.id));
   if (ids.size === 0) return batch;
-  return { ...batch, running: true, items: batch.items.map((i) => (ids.has(i.id) ? { ...i, status: "waiting", done: 0, total: 0, error: null } : i)) };
+  return { ...batch, running: true, edit, started: ids.size, items: batch.items.map((i) => (ids.has(i.id) ? { ...i, status: "waiting", done: 0, total: 0, error: null, draftId: null } : i)) };
 }
 
 /** The next file to translate, if the batch is running and none is translating. */
@@ -136,6 +142,14 @@ export function progress(batch: Batch, done: number, total: number): Batch {
 export function finished(batch: Batch, result: DocDone): Batch {
   const current = batch.items.find((i) => i.status === "translating");
   return current ? update(batch, current.id, (i) => ({ ...i, status: "done", output: result.output, result, done: i.total })) : batch;
+}
+
+/** The current file was translated for editing: it is done, and its draft is what the Edit button opens. */
+export function editTranslated(batch: Batch, translated: EditTranslated): Batch {
+  const current = batch.items.find((i) => i.status === "translating");
+  if (!current) return batch;
+  const result: DocDone = { output: "", kind: translated.kind, units: translated.units, translated: translated.units, parts: null, skipped: translated.skipped };
+  return update(batch, current.id, (i) => ({ ...i, status: "done", output: null, result, draftId: translated.draftId, done: i.total }));
 }
 
 /** The current file failed (a cancel is not a failure of the file: it goes back to "ready"). */

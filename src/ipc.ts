@@ -217,6 +217,65 @@ export interface DocDone {
   skipped: string[];
 }
 
+/** Where a segment of an open document sits; the window turns it into a label ("Slide 4 · Notes"). */
+export interface EditHeader {
+  part: string;
+  name: string | null;
+  number: number | null;
+  cell: string | null;
+}
+
+export interface EditSegment {
+  /** The unit it translates, or null for text that is left as it was. */
+  unit: number | null;
+  header: EditHeader;
+  source: string;
+  /** Formatting of the marked stretches: 1 bold, 2 italic, 4 underline, 8 link. */
+  styles: number[];
+  /** No markers or address tokens: word alternatives work in its translation. */
+  plain: boolean;
+  translation: string | null;
+  /** The engine's translation, only for an edited segment. */
+  base: string | null;
+  hits: number;
+  edited: boolean;
+}
+
+export interface EditOpened {
+  path: string;
+  name: string;
+  kind: DocInfo["kind"];
+  from: string;
+  to: string;
+  segments: EditSegment[];
+  units: number;
+  skipped: string[];
+  resumed: boolean;
+}
+
+/** A document was translated for editing; its translations wait in a draft. */
+export interface EditTranslated {
+  draftId: string;
+  path: string;
+  kind: DocInfo["kind"];
+  units: number;
+  skipped: string[];
+}
+
+export interface DraftInfo {
+  id: string;
+  name: string;
+  path: string;
+  kind: DocInfo["kind"];
+  from: string;
+  to: string;
+  updatedAt: number;
+  edited: number;
+  units: number;
+  /** "ok", "missing" or "maybe_changed". */
+  status: "ok" | "missing" | "maybe_changed";
+}
+
 export interface DocFailed {
   code: string;
   message: string;
@@ -338,6 +397,19 @@ export const ipc = {
   readDroppedFile: async (path: string): Promise<Uint8Array> => (isTauri ? new Uint8Array(await invoke<ArrayBuffer>("read_dropped_file", { path })) : new Uint8Array()),
   onDocProgress: (cb: (p: { done: number; total: number }) => void) => on<{ done: number; total: number }>("doc-progress", cb),
   onDocDone: (cb: (d: DocDone) => void) => on<DocDone>("doc-done", cb),
+  /** Translate a document for editing (progress and failures use the doc events); the result waits in a draft. */
+  editStart: (path: string, from: string, to: string) => call<void>("edit_start", { path, from, to }),
+  onEditTranslated: (cb: (d: EditTranslated) => void) => on<EditTranslated>("edit-translated", cb),
+  /** Open a draft in the editor. `path` is the document when it was moved. */
+  editResume: (id: string, path?: string) => call<EditOpened>("edit_resume", { id, path }),
+  editDraftSave: (path: string, edits: Record<number, string>) => call<void>("edit_draft_save", { path, edits }),
+  /** The sentences of a segment's translation, or null when the text is not what the engine makes. */
+  editAnalyse: (unit: number, current: string) => call<TranslateResult | null>("edit_analyse", { unit, current }),
+  editRetranslate: (unit: number) => call<{ text: string; hits: number }>("edit_retranslate", { unit }),
+  editSave: (path: string, output: string, edits: Record<number, string>, keepDraft: boolean) => call<{ output: string; skipped: string[] }>("edit_save", { path, output, edits, keepDraft }),
+  editClose: (path: string, deleteDraft: boolean) => call<void>("edit_close", { path, deleteDraft }),
+  draftsList: () => call<DraftInfo[]>("drafts_list"),
+  draftDelete: (id: string) => call<void>("draft_delete", { id }),
   onDocFailed: (cb: (d: DocFailed) => void) => on<DocFailed>("doc-failed", cb),
   takeCaptureResult: (lastSeen: number | null) => call<CaptureResult | null>("take_capture_result", { lastSeen }),
 
