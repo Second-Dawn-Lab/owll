@@ -903,7 +903,10 @@ html:has(.cap) #root {
 /* Files tab */
 .files {
   display: grid;
+  flex: 1;
+  min-width: 0;
   place-items: center;
+  align-content: center;
   height: 100%;
   padding: 24px;
 }
@@ -1849,4 +1852,139 @@ html:has(.cap) #root {
   max-height: 220px;
   padding: 0 14px 12px;
   overflow-y: auto;
+}
+
+/* The whole content area is the drop target: it lights up while files are dragged over the window */
+.content {
+  position: relative;
+}
+.dropveil {
+  position: absolute;
+  inset: 8px;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--dw-brand);
+  border-radius: var(--dw-radius);
+  background: color-mix(in srgb, var(--dw-brand-soft) 85%, transparent);
+  color: var(--dw-brand-text);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Live captions: the caption bar (a transparent window with a rounded surface) */
+:root[data-window="live"],
+:root[data-window="live"] body,
+:root[data-window="live"] #root {
+  background: transparent;
+}
+.livebar {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 14px 12px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--dw-surface) calc(var(--live-opacity, 0.82) * 100%), transparent);
+  color: var(--dw-text);
+  border: 1px solid color-mix(in srgb, var(--dw-border-strong) 70%, transparent);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  user-select: none;
+}
+.livebar--locked {
+  opacity: 0.92;
+}
+.livebar__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.livebar:hover .livebar__tools,
+.livebar:focus-within .livebar__tools {
+  opacity: 1;
+}
+.livebar--locked .livebar__tools {
+  display: none;
+}
+.livebar__spacer {
+  flex: 1;
+}
+.livebar__lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 0;
+  overflow: hidden;
+}
+.livebar__line {
+  display: grid;
+  gap: 1px;
+}
+.livebar__translation {
+  font-size: var(--live-font, 28px);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.livebar__original {
+  color: var(--dw-text-2);
+  font-size: calc(var(--live-font, 28px) * 0.6);
+  line-height: 1.3;
+}
+.livebar__hint,
+.livebar__message {
+  margin: 0;
+  color: var(--dw-text-2);
+  font-size: 15px;
+}
+.livebar__message {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--dw-warn);
+}
+.livebar__history {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  user-select: text;
+}
+.livebar__historybar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.livebar__history ul {
+  flex: 1;
+  margin: 6px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.livebar__history li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--dw-border);
+}
+.livebar__orig {
+  display: block;
+  color: var(--dw-text-3);
+  font-size: 12.5px;
+}
+.range {
+  width: 160px;
+  accent-color: var(--dw-brand);
+}
+.livebar .picker__trigger {
+  height: 28px;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 13px;
 }

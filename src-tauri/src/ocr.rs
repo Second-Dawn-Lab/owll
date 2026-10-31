@@ -20,6 +20,43 @@ pub struct Problem {
 /// Recognize the text in an image. `Ok("")` means the image has no text.
 #[cfg(windows)]
 pub fn recognize(capture_languages: &[String], active: &[String], image: OcrImage) -> Result<String, Problem> {
+    recognize_impl(capture_languages, active, image)
+}
+
+/// For live captions: the recognized text as it is on screen, one line per screen line (not joined into sentences), read once at
+/// one scale. Lines keep their identity while captions scroll, which is how new lines are told from old ones.
+#[cfg(windows)]
+pub fn recognize_screen_lines(capture_languages: &[String], active: &[String], image: OcrImage) -> Result<String, Problem> {
+    use dawn_ocr::{choose, scale, OcrEngine, WindowsOcr};
+
+    let engine = WindowsOcr::new();
+    let languages = choose::effective_languages(capture_languages, active);
+    let plan = choose::plan(&languages, &engine.available_languages());
+    if plan.run.is_empty() {
+        return Err(Problem { code: "language_missing", languages: plan.missing });
+    }
+    let image = scale::fit_max_side(image);
+    let factor = scale::scales(image.width, image.height).first().copied().unwrap_or(1);
+    let big = scale::upscale(&image, factor);
+    let mut results = Vec::new();
+    for (code, tag) in &plan.run {
+        if let Ok(lines) = engine.recognize(&big, tag) {
+            results.push((code.clone(), lines.iter().map(|l| l.text.trim()).filter(|t| !t.is_empty()).collect::<Vec<_>>().join("\n")));
+        }
+    }
+    if results.is_empty() {
+        return Err(Problem { code: "failed", languages: Vec::new() });
+    }
+    Ok(choose::best_result(&results).map(|r| r.1.clone()).unwrap_or_default())
+}
+
+#[cfg(not(windows))]
+pub fn recognize_screen_lines(_: &[String], _: &[String], _: OcrImage) -> Result<String, Problem> {
+    Err(Problem { code: "unsupported", languages: Vec::new() })
+}
+
+#[cfg(windows)]
+fn recognize_impl(capture_languages: &[String], active: &[String], image: OcrImage) -> Result<String, Problem> {
     use dawn_ocr::{choose, fix, join, scale, OcrEngine, WindowsOcr};
 
     let engine = WindowsOcr::new();

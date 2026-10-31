@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { CaptureOverlay } from "./components/CaptureOverlay";
 import { MainWindow } from "./components/MainWindow";
 import { QuickPopup } from "./components/QuickPopup";
+import { LiveBar } from "./components/LiveBar";
 import { SettingsWindow } from "./settings/SettingsWindow";
 import { dictionaries, supportedLocales } from "./i18n";
 import { ipc, windowLabel } from "./ipc";
@@ -42,6 +43,11 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [settings.captureShortcutEnabled, settings.captureShortcut]);
 
+  // The caption bar is transparent around its rounded surface: the page styles look at this.
+  useEffect(() => {
+    document.documentElement.dataset.window = label;
+  }, []);
+
   useEffect(() => {
     document.documentElement.lang = locale;
     if (label === "main") void ipc.setTrayLanguage(locale);
@@ -49,7 +55,7 @@ export function App() {
 
   return (
     <I18nProvider locale={locale} dictionaries={dictionaries}>
-      {ready && (label === "settings" ? <SettingsWindow /> : label === "quick" ? <QuickPopup /> : label.startsWith("overlay-") ? <CaptureOverlay /> : <MainWindow />)}
+      {ready && (label === "settings" ? <SettingsWindow /> : label === "quick" ? <QuickPopup /> : label.startsWith("overlay-") ? <CaptureOverlay /> : label === "live" ? <LiveBar /> : <MainWindow />)}
     </I18nProvider>
   );
 }

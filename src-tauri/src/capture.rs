@@ -72,11 +72,13 @@ pub struct Capture {
     restore_main: AtomicBool,
     /// ... and also when the result goes to the small popup (the window returns behind it).
     restore_after_result: AtomicBool,
+    /// The rectangle being drawn is for live captions, not for reading text once.
+    live_mode: AtomicBool,
 }
 
 impl Capture {
     pub fn new() -> Self {
-        Self { session: Mutex::new(None), result: Mutex::new(None), next_result: AtomicU64::new(1), busy: AtomicBool::new(false), next_id: AtomicU64::new(1), restore_main: AtomicBool::new(false), restore_after_result: AtomicBool::new(false) }
+        Self { session: Mutex::new(None), result: Mutex::new(None), next_result: AtomicU64::new(1), busy: AtomicBool::new(false), next_id: AtomicU64::new(1), restore_main: AtomicBool::new(false), restore_after_result: AtomicBool::new(false), live_mode: AtomicBool::new(false) }
     }
 }
 
@@ -148,6 +150,7 @@ pub fn start(app: &AppHandle) {
                 }
             },
         };
+        crate::live::exclude_from_capture(&window);
         // Cover the monitor exactly. Move first so the window is on the monitor (and its DPI)
         // when it is resized.
         let _ = window.set_position(PhysicalPosition::new(x, y));
@@ -164,6 +167,7 @@ pub fn cancel(app: &AppHandle) {
     *capture.session.lock().unwrap() = None;
     capture.busy.store(false, Ordering::SeqCst);
     capture.restore_after_result.store(false, Ordering::SeqCst);
+    capture.live_mode.store(false, Ordering::SeqCst);
     if capture.restore_main.swap(false, Ordering::SeqCst) {
         crate::tray::show_main(app);
     }
@@ -272,6 +276,14 @@ pub fn capture_finish(app: AppHandle, capture: State<'_, Capture>, label: String
         return Ok(());
     };
     let desktop = map::to_desktop((screen.x, screen.y), pixels);
+    // Live captions: the rectangle is only a place to watch; nothing is read from the frozen screenshot.
+    if capture.live_mode.swap(false, Ordering::SeqCst) {
+        capture.busy.store(false, Ordering::SeqCst);
+        capture.restore_after_result.store(false, Ordering::SeqCst);
+        drop(session);
+        crate::live::begin(&app, dawn_capture::Region { x: desktop.x, y: desktop.y, w: desktop.w, h: desktop.h });
+        return Ok(());
+    }
     let cropped = map::crop(&screen.frame, pixels);
     // The image the main window shows next to the text.
     let bmp = cropped.as_ref().map(map::to_bmp);
@@ -438,6 +450,16 @@ pub fn capture_start(app: AppHandle, hide_main: bool) {
 /// window steps aside first (so it is not in the screenshot) and comes back with the result, or when
 /// the capture is cancelled.
 pub fn start_from_shortcut(app: &AppHandle) {
+    start_hiding_main(app, true);
+}
+
+/// Draw the region for live captions: the same overlay as an area capture; the rectangle goes to `live::begin`.
+pub fn start_for_live(app: &AppHandle) {
+    let capture = app.state::<Capture>();
+    if capture.busy.load(Ordering::SeqCst) {
+        return;
+    }
+    capture.live_mode.store(true, Ordering::SeqCst);
     start_hiding_main(app, true);
 }
 

@@ -285,6 +285,10 @@ export interface DictInfo {
   license: string;
   attribution: string;
   sourceUrl: string;
+  /** A thin or rough dictionary. */
+  beta: boolean;
+  /** Entries of the larger direction. */
+  entries: number;
 }
 
 export interface DictEntry {
@@ -313,6 +317,36 @@ export interface DictProgress {
   done: number;
   total: number;
   error: string | null;
+}
+
+/** One caption line: what was read and its translation. */
+export interface LiveLine {
+  original: string;
+  translation: string;
+}
+
+export interface LiveLines {
+  /** The first line is the last one shown before, now longer: it replaces it. */
+  replaceLast: boolean;
+  lines: LiveLine[];
+  from: string;
+  to: string;
+  ocrMs: number;
+  translateMs: number;
+}
+
+export interface LiveStatus {
+  state: "running" | "paused" | "black" | "no_text" | "ocr_missing" | "pack_missing" | "undetected" | "error";
+  languages: string[];
+  message: string;
+}
+
+export interface LiveState {
+  running: boolean;
+  paused: boolean;
+  locked: boolean;
+  source: string;
+  target: string;
 }
 
 export interface DocFailed {
@@ -402,7 +436,7 @@ export const ipc = {
   closeAction: (action: "background" | "quit", remember: boolean) =>
     call<void>("close_action", { action, remember }),
 
-  checkShortcut: (name: "translate" | "capture", text: string) => call<ShortcutCheck>("check_shortcut", { name, text }),
+  checkShortcut: (name: "translate" | "capture" | "live", text: string) => call<ShortcutCheck>("check_shortcut", { name, text }),
   /** Why the global shortcuts could not start, if they could not. */
   hotkeyStatus: () => call<string | null>("hotkey_status"),
   quickTake: () => call<QuickRequest | null>("quick_take"),
@@ -437,6 +471,20 @@ export const ipc = {
   onDocProgress: (cb: (p: { done: number; total: number }) => void) => on<{ done: number; total: number }>("doc-progress", cb),
   onDocDone: (cb: (d: DocDone) => void) => on<DocDone>("doc-done", cb),
   /** Translate a document for editing (progress and failures use the doc events); the result waits in a draft. */
+  liveState: () => call<LiveState>("live_state"),
+  /** Start live captions (draw the region), or stop them when they run. */
+  liveToggle: () => call<void>("live_toggle"),
+  liveStop: () => call<void>("live_stop"),
+  livePause: (paused: boolean) => call<void>("live_pause", { paused }),
+  liveLock: (locked: boolean) => call<void>("live_lock", { locked }),
+  liveLanguages: (source: string, target: string) => call<void>("live_languages", { source, target }),
+  liveChangeRegion: () => call<void>("live_change_region"),
+  liveReplaceBar: () => call<void>("live_replace_bar"),
+  liveSaveText: (path: string, text: string) => call<void>("live_save_text", { path, text }),
+  onLiveLines: (cb: (d: LiveLines) => void) => on<LiveLines>("live-lines", cb),
+  onLiveStatus: (cb: (d: LiveStatus) => void) => on<LiveStatus>("live-status", cb),
+  onLiveCleared: (cb: () => void) => on<null>("live-cleared", cb),
+  onLiveLocked: (cb: (locked: boolean) => void) => on<boolean>("live-locked", cb),
   dictList: () => call<DictInfo[]>("dict_list"),
   dictLookup: (word: string, lang: string, partner: string) => call<DictLookup>("dict_lookup", { word, lang, partner }),
   dictInstall: (id: string) => call<void>("dict_install", { id }),

@@ -10,6 +10,8 @@ pub struct TrayLabels {
     open: MenuItem<Wry>,
     settings: MenuItem<Wry>,
     quit: MenuItem<Wry>,
+    live: MenuItem<Wry>,
+    unlock: MenuItem<Wry>,
 }
 
 fn labels(lang: &str) -> (&'static str, &'static str, &'static str) {
@@ -19,12 +21,22 @@ fn labels(lang: &str) -> (&'static str, &'static str, &'static str) {
     }
 }
 
+fn live_labels(lang: &str) -> (&'static str, &'static str) {
+    match lang {
+        "de" => ("Live-Untertitel", "Untertitelleiste entsperren"),
+        _ => ("Live captions", "Unlock the caption bar"),
+    }
+}
+
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let (o, s, q) = labels("en");
     let open = MenuItem::with_id(app, "open", o, true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", s, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", q, true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &settings, &quit])?;
+    let (l, u) = live_labels("en");
+    let live = MenuItem::with_id(app, "live", l, true, None::<&str>)?;
+    let unlock = MenuItem::with_id(app, "live-unlock", u, true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &live, &unlock, &settings, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
         .tooltip("Owl-L")
@@ -33,6 +45,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_main(app),
             "settings" => open_settings_window(app, None),
+            "live" => crate::live::start_or_stop_from_menu(app),
+            "live-unlock" => crate::live::unlock(app),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -46,7 +60,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     }
     builder.build(app)?;
 
-    app.manage(TrayLabels { open, settings, quit });
+    app.manage(TrayLabels { open, settings, quit, live, unlock });
     Ok(())
 }
 
@@ -56,6 +70,9 @@ pub fn set_language(app: &AppHandle, lang: &str) {
         let _ = l.open.set_text(o);
         let _ = l.settings.set_text(s);
         let _ = l.quit.set_text(q);
+        let (live, unlock) = live_labels(lang);
+        let _ = l.live.set_text(live);
+        let _ = l.unlock.set_text(unlock);
     }
 }
 

@@ -40,6 +40,19 @@ export interface Settings {
   pdfAsk: boolean;
   /** The Files tab's own target language ("" = not chosen yet). */
   filesTargetLanguage: string;
+  liveShortcutEnabled: boolean;
+  liveShortcut: string;
+  /** How often live captions look at the region. */
+  liveSpeed: "calm" | "normal" | "fast";
+  /** Translated lines the caption bar shows (1 to 3). */
+  liveLines: number;
+  /** Font size of the translation in the caption bar. */
+  liveFontSize: number;
+  /** Opacity of the bar's background (0.3 to 1). */
+  liveOpacity: number;
+  liveShowOriginal: boolean;
+  /** Keep the lines of a live session in the history when it ends. */
+  liveSaveTranscripts: boolean;
 }
 
 /** Used until the backend answers, and by the browser mock. Keep in sync with Rust. */
@@ -73,4 +86,12 @@ export const defaultSettings: Settings = {
   pdfOutput: "docx",
   pdfAsk: true,
   filesTargetLanguage: "",
+  liveShortcutEnabled: true,
+  liveShortcut: "Ctrl+Shift+L",
+  liveSpeed: "normal",
+  liveLines: 2,
+  liveFontSize: 28,
+  liveOpacity: 0.82,
+  liveShowOriginal: false,
+  liveSaveTranscripts: false,
 };

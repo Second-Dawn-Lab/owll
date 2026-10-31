@@ -37,7 +37,7 @@ export function ShortcutDialog({
   onSave,
   onClose,
 }: {
-  name: "translate" | "capture";
+  name: "translate" | "capture" | "live";
   current: string;
   onSave: (shortcut: string) => void;
   onClose: () => void;

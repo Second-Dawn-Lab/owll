@@ -34,10 +34,12 @@ pub struct DictInfo {
     license: String,
     attribution: String,
     source_url: String,
+    beta: bool,
+    entries: u32,
 }
 
 fn info(state: &AppState, d: &Dictionary) -> DictInfo {
-    DictInfo { id: d.id.clone(), languages: d.languages.clone(), size_bytes: d.size_bytes, installed: state.store.is_dictionary_installed(&d.id), license: d.license.clone(), attribution: d.attribution.clone(), source_url: d.source_url.clone() }
+    DictInfo { id: d.id.clone(), languages: d.languages.clone(), size_bytes: d.size_bytes, installed: state.store.is_dictionary_installed(&d.id), license: d.license.clone(), attribution: d.attribution.clone(), source_url: d.source_url.clone(), beta: d.beta, entries: d.entries }
 }
 
 #[tauri::command]
@@ -111,6 +113,35 @@ fn open_dict(state: &AppState, dict_state: &DictState, pack: &Dictionary, from: 
     Ok(dict)
 }
 
+/// Which dictionary answers a lookup.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LookupPlan {
+    /// The installed pack `pack`, direction `lang` to `to`.
+    Use { pack: String, to: String },
+    /// The pack has to be downloaded first.
+    Download { pack: String, to: String },
+    /// No dictionary has this language.
+    Unavailable,
+}
+
+/// The dictionary for a word of `lang` in a translation with `partner`: the pair's own, else the language with English
+/// ("Meanings in English" when the partner is another language). An installed pack wins over one that still has to be
+/// downloaded, and the pair's own wins over English.
+pub fn plan_lookup(catalog: &dawn_models::Catalog, installed: &dyn Fn(&str) -> bool, lang: &str, partner: &str) -> LookupPlan {
+    let mut missing: Option<LookupPlan> = None;
+    for to in [partner, "en"] {
+        if to == lang {
+            continue;
+        }
+        let Some(pack) = catalog.dictionary_for(lang, to) else { continue };
+        if installed(&pack.id) {
+            return LookupPlan::Use { pack: pack.id.clone(), to: to.to_string() };
+        }
+        missing.get_or_insert(LookupPlan::Download { pack: pack.id.clone(), to: to.to_string() });
+    }
+    missing.unwrap_or(LookupPlan::Unavailable)
+}
+
 /// Look up `word`, written in `lang`, in the dictionary that translates `lang` into `partner` (the other language of the
 /// translation), or into English when there is none for that pair. Slow the first time (the file is read).
 #[tauri::command]
@@ -118,23 +149,19 @@ pub async fn dict_lookup(app: AppHandle, word: String, lang: String, partner: St
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let dict_state = app.state::<DictState>();
-        let mut wanted: Option<(&Dictionary, String)> = None;
-        for to in [partner.as_str(), "en"] {
-            if to == lang {
-                continue;
-            }
-            let Some(pack) = state.catalog.dictionary_for(&lang, to) else { continue };
-            if state.store.is_dictionary_installed(&pack.id) {
-                let dict = open_dict(&state, &dict_state, pack, &lang, to)?;
+        match plan_lookup(&state.catalog, &|id: &str| state.store.is_dictionary_installed(id), &lang, &partner) {
+            LookupPlan::Use { pack, to } => {
+                let pack = state.catalog.dictionary(&pack).ok_or_else(|| CmdError::new("unknown_dictionary", &pack))?;
+                let dict = open_dict(&state, &dict_state, pack, &lang, &to)?;
                 let found = dict.lookup(&word).map_err(|e| CmdError::new("dictionary", e))?;
-                return Ok(LookupOut { status: "ok", pack: None, from: lang.clone(), to: to.to_string(), entries: found.hits.into_iter().map(entry_out).collect(), suggestions: found.suggestions });
+                Ok(LookupOut { status: "ok", pack: None, from: lang.clone(), to, entries: found.hits.into_iter().map(entry_out).collect(), suggestions: found.suggestions })
             }
-            wanted.get_or_insert((pack, to.to_string()));
+            LookupPlan::Download { pack, to } => {
+                let pack = state.catalog.dictionary(&pack).ok_or_else(|| CmdError::new("unknown_dictionary", &pack))?;
+                Ok(LookupOut { status: "no_pack", pack: Some(info(&state, pack)), from: lang.clone(), to, entries: vec![], suggestions: vec![] })
+            }
+            LookupPlan::Unavailable => Ok(LookupOut { status: "unavailable", pack: None, from: lang.clone(), to: partner.clone(), entries: vec![], suggestions: vec![] }),
         }
-        Ok(match wanted {
-            Some((pack, to)) => LookupOut { status: "no_pack", pack: Some(info(&state, pack)), from: lang.clone(), to, entries: vec![], suggestions: vec![] },
-            None => LookupOut { status: "unavailable", pack: None, from: lang.clone(), to: partner.clone(), entries: vec![], suggestions: vec![] },
-        })
     })
     .await
     .map_err(|e| CmdError::new("engine", e))?
@@ -214,4 +241,50 @@ pub fn dict_remove(app: AppHandle, state: State<'_, AppState>, dict_state: State
     state.store.remove_dictionary(&id)?;
     let _ = app.emit("dict-changed", ());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn catalog(pairs: &[(&str, &str)]) -> dawn_models::Catalog {
+        let mut c = dawn_models::Catalog::default();
+        for (a, b) in pairs {
+            let mut ids = [a.to_string(), b.to_string()];
+            ids.sort();
+            c.dictionaries.push(Dictionary { id: ids.join("-"), languages: vec![a.to_string(), b.to_string()], urls: vec![], size_bytes: 1, sha256: String::new(), license: "CC-BY-SA-4.0".into(), attribution: String::new(), source_url: String::new(), beta: false, entries: 0 });
+        }
+        c
+    }
+
+    #[test]
+    fn the_pairs_own_pack_answers_when_it_is_installed() {
+        let c = catalog(&[("de", "en"), ("en", "fr")]);
+        assert_eq!(plan_lookup(&c, &|_| true, "de", "en"), LookupPlan::Use { pack: "de-en".into(), to: "en".into() });
+        assert_eq!(plan_lookup(&c, &|_| true, "en", "fr"), LookupPlan::Use { pack: "en-fr".into(), to: "fr".into() });
+    }
+
+    #[test]
+    fn a_pair_without_english_uses_the_language_with_english_and_says_so() {
+        // A German word in a German to French translation: no de-fr pack, so the German to English one ("Meanings in English").
+        let c = catalog(&[("de", "en"), ("en", "fr")]);
+        assert_eq!(plan_lookup(&c, &|_| true, "de", "fr"), LookupPlan::Use { pack: "de-en".into(), to: "en".into() });
+        assert_eq!(plan_lookup(&c, &|_| true, "fr", "de"), LookupPlan::Use { pack: "en-fr".into(), to: "en".into() });
+    }
+
+    #[test]
+    fn a_missing_pack_is_offered_and_an_installed_fallback_beats_a_missing_exact_pair() {
+        let c = catalog(&[("de", "en"), ("en", "fr")]);
+        assert_eq!(plan_lookup(&c, &|_| false, "de", "fr"), LookupPlan::Download { pack: "de-en".into(), to: "en".into() });
+        let both = catalog(&[("de", "fr"), ("de", "en")]);
+        assert_eq!(plan_lookup(&both, &|id| id == "de-en", "de", "fr"), LookupPlan::Use { pack: "de-en".into(), to: "en".into() });
+        assert_eq!(plan_lookup(&both, &|_| false, "de", "fr"), LookupPlan::Download { pack: "de-fr".into(), to: "fr".into() });
+    }
+
+    #[test]
+    fn a_language_without_any_dictionary_is_unavailable_and_a_language_is_not_a_pair_with_itself() {
+        let c = catalog(&[("de", "en")]);
+        assert_eq!(plan_lookup(&c, &|_| true, "ur", "en"), LookupPlan::Unavailable);
+        assert_eq!(plan_lookup(&c, &|_| true, "en", "en"), LookupPlan::Unavailable);
+    }
 }

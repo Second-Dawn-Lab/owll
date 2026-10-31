@@ -54,6 +54,20 @@ pub struct Settings {
     /// The target language of the Files tab ("" = not chosen yet: it starts as the Text tab's target). Separate
     /// from `target_language`, so neither tab changes the other's choice.
     pub files_target_language: String,
+    pub live_shortcut_enabled: bool,
+    pub live_shortcut: String,
+    /// How often live captions look at the region: "calm" | "normal" | "fast".
+    pub live_speed: String,
+    /// Translated lines the caption bar shows (1 to 3).
+    pub live_lines: u32,
+    /// Font size of the translation in the bar, logical pixels.
+    pub live_font_size: u32,
+    /// Opacity of the bar's background, 0.3 to 1.
+    pub live_opacity: f64,
+    /// A small line with the original text above the translation.
+    pub live_show_original: bool,
+    /// Keep the lines of a live session in the history when it ends (off: nothing is kept).
+    pub live_save_transcripts: bool,
 }
 
 impl Default for Settings {
@@ -89,6 +103,14 @@ impl Default for Settings {
             pdf_output: "docx".into(),
             pdf_ask: true,
             files_target_language: String::new(),
+            live_shortcut_enabled: true,
+            live_shortcut: "Ctrl+Shift+L".into(),
+            live_speed: "normal".into(),
+            live_lines: 2,
+            live_font_size: 28,
+            live_opacity: 0.82,
+            live_show_original: false,
+            live_save_transcripts: false,
         }
     }
 }

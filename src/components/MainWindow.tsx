@@ -36,6 +36,7 @@ export function MainWindow() {
   const [droppedDocs, setDroppedDocs] = useState<{ paths: string[]; n: number } | null>(null);
   const [droppedImage, setDroppedImage] = useState<{ path: string; n: number } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
   /** The draft open in the editor, and a counter that tells the drafts list to reload when the editor closes. */
   const [editing, setEditing] = useState<{ draftId: string; n: number } | null>(null);
   const [draftsKey, setDraftsKey] = useState(0);
@@ -111,6 +112,12 @@ export function MainWindow() {
     const unlisten = isTauri
       ? import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
           getCurrentWebview().onDragDropEvent((event) => {
+            // While files are dragged over the window the whole content area lights up as the drop target.
+            if (event.payload.type === "enter" || event.payload.type === "over") {
+              setDragging(true);
+              return;
+            }
+            setDragging(false);
             if (event.payload.type !== "drop") return;
             const paths = event.payload.paths;
             // Several documents of any mix of types go to the Files tab together.
@@ -144,7 +151,8 @@ export function MainWindow() {
   ];
 
   const menu: MenuEntry[] = [
-    { label: t("menu.settings"), icon: "settings", onSelect: () => void ipc.openSettings() },
+    { label: t("menu.live"), icon: "scan", onSelect: () => void ipc.liveToggle() },
+    { label: t("menu.settings"), icon: "settings", separator: true, onSelect: () => void ipc.openSettings() },
     { label: t("menu.packs"), icon: "package", onSelect: () => void ipc.openSettings("packs") },
     { label: t("menu.updates"), icon: "download", separator: true, onSelect: () => void checkForUpdate(false) },
     { label: t("menu.about"), icon: "info", onSelect: () => setAboutOpen(true) },
@@ -174,6 +182,11 @@ export function MainWindow() {
       </header>
 
       <main className="content">
+        {dragging && (
+          <div className="dropveil" aria-hidden="true">
+            <span>{t("files.dropHere")}</span>
+          </div>
+        )}
         {/* The text tab stays mounted so unsent text and undo history survive tab switches. */}
         <div className="tabpanel" hidden={tab !== "text" || !!editing}>
           <TextTab incoming={incoming} quick={quick} capture={captureNote} onDismissCapture={() => setCaptureNote(null)} />

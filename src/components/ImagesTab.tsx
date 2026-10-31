@@ -171,6 +171,9 @@ export function ImagesTab({ captured, dropped }: { captured?: CaptureResult | nu
               <Button icon="scan" onClick={() => void ipc.captureStart(true)}>
                 {t("images.capture")}
               </Button>
+              <Button icon="text" onClick={() => void ipc.liveToggle()}>
+                {t("images.live")}
+              </Button>
             </div>
           </footer>
         </section>

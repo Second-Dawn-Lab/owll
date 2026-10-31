@@ -152,6 +152,7 @@ export function DictionaryEntry({ query, compact = false, onLookup }: { query: D
   const shown = compact ? result.entries.slice(0, 3) : result.entries;
   return (
     <div className="dict">
+      {result.to === "en" && query.partner !== "en" && <p className="dict__via">{t("dict.inEnglish")}</p>}
       {shown.map((e, i) => (
         <EntryView key={`${e.head}-${e.pos}-${i}`} entry={e} query={query} compact={compact} />
       ))}

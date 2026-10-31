@@ -21,6 +21,7 @@ use crate::tray;
 
 pub const TRANSLATE: &str = "translate";
 pub const CAPTURE: &str = "capture";
+pub const LIVE: &str = "live";
 const POPUP: &str = "quick";
 const DEFAULT_SIZE: (f64, f64) = (420.0, 260.0);
 /// How long to wait for a program to put the copied text on the clipboard.
@@ -168,6 +169,11 @@ fn active_shortcuts(s: &Settings) -> Vec<(String, Shortcut)> {
             list.push((CAPTURE.to_string(), shortcut));
         }
     }
+    if s.live_shortcut_enabled {
+        if let Ok(shortcut) = s.live_shortcut.parse() {
+            list.push((LIVE.to_string(), shortcut));
+        }
+    }
     list
 }
 
@@ -211,6 +217,7 @@ pub fn normalize(s: &mut Settings) -> Result<(), CmdError> {
     let canonical = |text: &str| text.parse::<Shortcut>().map(|sc| sc.to_string()).map_err(|e| CmdError::new("bad_shortcut", e));
     s.translate_shortcut = canonical(&s.translate_shortcut)?;
     s.capture_shortcut = canonical(&s.capture_shortcut)?;
+    s.live_shortcut = canonical(&s.live_shortcut)?;
     s.block_list = tidy_block_list(&s.block_list);
     Ok(())
 }
@@ -262,7 +269,7 @@ fn check(name: &str, text: &str, others: &[(&str, &str)]) -> ShortcutCheck {
 #[tauri::command]
 pub fn check_shortcut(state: State<'_, AppState>, name: String, text: String) -> ShortcutCheck {
     let s = state.settings.lock().unwrap();
-    check(&name, &text, &[(TRANSLATE, &s.translate_shortcut), (CAPTURE, &s.capture_shortcut)])
+    check(&name, &text, &[(TRANSLATE, &s.translate_shortcut), (CAPTURE, &s.capture_shortcut), (LIVE, &s.live_shortcut)])
 }
 
 /// Why the keyboard hook could not start, if it could not.
@@ -278,6 +285,12 @@ fn on_hotkey(app: &AppHandle, name: &str, outcome: Outcome) {
     if name == CAPTURE {
         if outcome == Outcome::Fired {
             crate::capture::start_from_shortcut(app);
+        }
+        return;
+    }
+    if name == LIVE {
+        if outcome == Outcome::Fired {
+            crate::live::toggle(app);
         }
         return;
     }
@@ -696,9 +709,12 @@ mod tests {
         assert_eq!(back.block_list, vec!["a.exe"]);
         assert!(active_shortcuts(&back).iter().all(|(n, _)| n != TRANSLATE), "a disabled shortcut is not registered");
         let defaults = active_shortcuts(&Settings::default());
-        assert_eq!(defaults.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), vec![TRANSLATE, CAPTURE]);
+        assert_eq!(defaults.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), vec![TRANSLATE, CAPTURE, LIVE]);
         let no_capture = Settings { capture_shortcut_enabled: false, ..Settings::default() };
-        assert_eq!(active_shortcuts(&no_capture).len(), 1, "a disabled capture shortcut is not registered");
+        assert_eq!(active_shortcuts(&no_capture).len(), 2, "a disabled capture shortcut is not registered");
+        assert_eq!(Settings::default().live_shortcut, "Ctrl+Shift+L");
+        let no_live = Settings { live_shortcut_enabled: false, ..Settings::default() };
+        assert!(active_shortcuts(&no_live).iter().all(|(n, _)| n != LIVE), "a disabled live captions shortcut is not registered");
         assert_eq!(Settings::default().capture_shortcut, "Ctrl+Shift+O");
         assert!(Settings::default().capture_shortcut_enabled, "capture is on by default");
         // The default is Ctrl+C pressed twice.

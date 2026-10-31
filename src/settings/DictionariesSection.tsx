@@ -1,4 +1,4 @@
-import { Button, Section } from "@seconddawn/ui";
+import { Button, Chip, Section } from "@seconddawn/ui";
 import { useCallback, useEffect, useState } from "react";
 import { DictionaryDownload } from "../components/DictionaryEntry";
 import { formatBytes } from "../components/usePacks";
@@ -21,8 +21,14 @@ export function DictionariesSection() {
       {packs.map((p) => (
         <div key={p.id} className="dw-row">
           <div className="dw-row__text">
-            <div className="dw-row__title">{p.languages.map((l) => languageName(l, locale)).join(" ↔ ")}</div>
-            <div className="dw-row__desc">{p.installed ? t("packs.dict.installed", { size: formatBytes(p.sizeBytes) }) : t("packs.dict.size", { size: formatBytes(p.sizeBytes) })}</div>
+            <div className="dw-row__title">
+              {p.languages.map((l) => languageName(l, locale)).join(" ↔ ")}
+              {p.beta && <Chip tone="warn">{t("packs.dict.beta")}</Chip>}
+            </div>
+            <div className="dw-row__desc">
+              {p.installed ? t("packs.dict.installed", { size: formatBytes(p.sizeBytes) }) : t("packs.dict.size", { size: formatBytes(p.sizeBytes) })}
+              {p.entries > 0 && ` · ${t("packs.dict.entries", { count: p.entries.toLocaleString(locale) })}`}
+            </div>
             <div className="dw-row__desc">{t("packs.dict.credit", { license: p.license.replace(/-/g, " ").replace("CC BY SA", "CC BY-SA"), source: p.attribution })}</div>
           </div>
           {p.installed ? (

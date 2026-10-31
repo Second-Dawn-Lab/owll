@@ -7,6 +7,7 @@ mod docs;
 mod edit;
 mod glossary;
 mod history;
+mod live;
 mod ocr;
 mod placement;
 mod quick;
@@ -36,6 +37,7 @@ pub fn run() {
         .manage(docs::DocJob::default())
         .manage(edit::EditSlot::default())
         .manage(dict::DictState::default())
+        .manage(live::Live::new())
         .plugin(tauri_plugin_dialog::init())
         .manage(quick::Quick::new())
         .manage(capture::Capture::new())
@@ -56,6 +58,15 @@ pub fn run() {
             docs::doc_default_output,
             docs::doc_translate,
             docs::doc_cancel,
+            live::live_state,
+            live::live_toggle,
+            live::live_stop,
+            live::live_pause,
+            live::live_lock,
+            live::live_languages,
+            live::live_change_region,
+            live::live_replace_bar,
+            live::live_save_text,
             dict::dict_list,
             dict::dict_lookup,
             dict::dict_install,

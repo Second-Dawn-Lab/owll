@@ -8,6 +8,7 @@ import { ipc } from "../ipc";
 import { checkForUpdate, installUpdate, useUpdateState } from "../updater";
 import { defaultSettings } from "./defaults";
 import { CaptureLanguages } from "./CaptureLanguages";
+import { LiveSettings } from "./LiveSettings";
 import { Kbd, ShortcutDialog } from "./ShortcutEditor";
 import { settingsStore } from "./store";
 
@@ -122,19 +123,19 @@ function UpdateRow() {
 export function ShortcutsPage() {
   const { t } = useT();
   const { settings, patch } = useAppSettings();
-  const [editing, setEditing] = useState<"translate" | "capture" | null>(null);
+  const [editing, setEditing] = useState<"translate" | "capture" | "live" | null>(null);
   const [hookError, setHookError] = useState<string | null>(null);
-  const [conflicts, setConflicts] = useState<{ translate: string[]; capture: string[] }>({ translate: [], capture: [] });
+  const [conflicts, setConflicts] = useState<{ translate: string[]; capture: string[]; live: string[] }>({ translate: [], capture: [], live: [] });
 
   useEffect(() => {
     void ipc.hotkeyStatus().then(setHookError);
-    void Promise.all([ipc.checkShortcut("translate", settings.translateShortcut), ipc.checkShortcut("capture", settings.captureShortcut)]).then(
-      ([a, b]) => setConflicts({ translate: a.conflicts, capture: b.conflicts }),
+    void Promise.all([ipc.checkShortcut("translate", settings.translateShortcut), ipc.checkShortcut("capture", settings.captureShortcut), ipc.checkShortcut("live", settings.liveShortcut)]).then(
+      ([a, b, c]) => setConflicts({ translate: a.conflicts, capture: b.conflicts, live: c.conflicts }),
     );
-  }, [settings.translateShortcut, settings.captureShortcut]);
+  }, [settings.translateShortcut, settings.captureShortcut, settings.liveShortcut]);
 
-  const conflictText = (name: "translate" | "capture") =>
-    conflicts[name].map((c) => t("shortcuts.conflict", { other: t(c === "capture" ? "shortcuts.capture" : "shortcuts.translate") })).join(" ");
+  const conflictText = (name: "translate" | "capture" | "live") =>
+    conflicts[name].map((c) => t("shortcuts.conflict", { other: t(c === "capture" ? "shortcuts.capture" : c === "live" ? "shortcuts.live" : "shortcuts.translate") })).join(" ");
   return (
     <>
       <p className="page-note">{t("shortcuts.note")}</p>
@@ -172,14 +173,22 @@ export function ShortcutsPage() {
             onChange={(v) => void patch({ captureShortcutEnabled: v })}
           />
         </Row>
+        <Row title={t("shortcuts.live")} description={[t("shortcuts.liveDesc"), conflictText("live")].filter(Boolean).join(" ")}>
+          <Kbd keys={settings.liveShortcut} />
+          <Button onClick={() => setEditing("live")}>{t("shortcuts.change")}</Button>
+          <Button variant="ghost" disabled={settings.liveShortcut === defaultSettings.liveShortcut} onClick={() => void patch({ liveShortcut: defaultSettings.liveShortcut })}>
+            {t("shortcuts.reset")}
+          </Button>
+          <Switch label={t("shortcuts.live")} checked={settings.liveShortcutEnabled} onChange={(v) => void patch({ liveShortcutEnabled: v })} />
+        </Row>
       </Section>
       {editing && (
         <ShortcutDialog
           name={editing}
-          current={editing === "translate" ? settings.translateShortcut : settings.captureShortcut}
+          current={editing === "translate" ? settings.translateShortcut : editing === "live" ? settings.liveShortcut : settings.captureShortcut}
           onClose={() => setEditing(null)}
           onSave={(shortcut) => {
-            void patch(editing === "translate" ? { translateShortcut: shortcut } : { captureShortcut: shortcut });
+            void patch(editing === "translate" ? { translateShortcut: shortcut } : editing === "live" ? { liveShortcut: shortcut } : { captureShortcut: shortcut });
             setEditing(null);
           }}
         />
@@ -276,6 +285,7 @@ export function FilesPage() {
       <Section>
         <CaptureLanguages />
       </Section>
+      <LiveSettings />
     </>
   );
 }
