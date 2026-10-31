@@ -5,6 +5,8 @@ import { languageName, useT } from "../i18n";
 import { ipc, type HistoryEntry } from "../ipc";
 import { settingsStore } from "../settings/store";
 import { CopyButton } from "./CopyButton";
+import { LiveSessionDialog } from "./LiveSessionDialog";
+import { timeRange } from "./liveLines";
 
 function timeAgo(ms: number, locale: string): string {
   const seconds = Math.round((ms - Date.now()) / 1000);
@@ -25,6 +27,7 @@ export function HistoryTab(props: { onUse: (entry: HistoryEntry) => void }) {
   const { settings } = useSettings(settingsStore);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [confirm, setConfirm] = useState(false);
+  const [session, setSession] = useState<HistoryEntry | null>(null);
 
   const refresh = useCallback(() => void ipc.historyList().then(setEntries), []);
   useEffect(() => {
@@ -63,15 +66,29 @@ export function HistoryTab(props: { onUse: (entry: HistoryEntry) => void }) {
             {entries.map((e) => (
               <li key={e.id} className="entry">
                 <div className="entry__head">
-                  <span className="entry__langs">
-                    {languageName(e.from, locale)} → {languageName(e.to, locale)}
-                  </span>
+                  {e.kind === "live" ? (
+                    <span className="entry__langs">
+                      {t("history.live.title", { range: timeRange(e.startedAt ?? 0, e.endedAt ?? 0, locale), from: languageName(e.from, locale), to: languageName(e.to, locale), count: e.lineCount ?? 0 })}
+                    </span>
+                  ) : (
+                    <span className="entry__langs">
+                      {languageName(e.from, locale)} → {languageName(e.to, locale)}
+                    </span>
+                  )}
                   <span className="entry__time">{timeAgo(e.createdAt, locale)}</span>
                   <span className="entry__spacer" />
-                  <Button variant="ghost" onClick={() => props.onUse(e)}>
-                    {t("history.use")}
-                  </Button>
-                  <CopyButton text={e.result} />
+                  {e.kind === "live" ? (
+                    <Button variant="ghost" onClick={() => setSession(e)}>
+                      {t("history.live.open")}
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="ghost" onClick={() => props.onUse(e)}>
+                        {t("history.use")}
+                      </Button>
+                      <CopyButton text={e.result} />
+                    </>
+                  )}
                   <IconButton icon="trash" label={t("history.delete")} onClick={() => void ipc.historyDelete(e.id)} />
                 </div>
                 <p className="entry__source" dir="auto">{e.source}</p>
@@ -81,6 +98,8 @@ export function HistoryTab(props: { onUse: (entry: HistoryEntry) => void }) {
           </ul>
         </>
       )}
+
+      <LiveSessionDialog entry={session} onClose={() => setSession(null)} />
 
       <Dialog
         open={confirm}

@@ -1,8 +1,10 @@
 import { Icon, Popover } from "@seconddawn/ui";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { languageName, useT } from "../i18n";
-import type { LanguageInfo } from "../ipc";
+import { windowLabel, type LanguageInfo } from "../ipc";
 import { placeDropdown } from "./dropdownPlacement";
+import { opensListsInOwnWindow, pickFromList } from "./nativePicker";
+import type { PickerRow } from "./pickerModel";
 
 interface Props {
   value: string;
@@ -110,6 +112,35 @@ export function LanguagePicker({ value, onChange, languages, allowAuto, detected
       </button>
     </li>
   );
+
+  // The caption bar and the quick popup are too small for a drop-down: the list opens in a window of its own.
+  if (opensListsInOwnWindow(windowLabel())) {
+    const rows: PickerRow[] = [];
+    if (groups.auto) rows.push({ kind: "item", value: "auto", label: t("lang.auto"), checked: value === "auto" });
+    if (groups.installed.length > 0) {
+      rows.push({ kind: "group", label: t("lang.installed") });
+      groups.installed.forEach((l) => rows.push({ kind: "item", value: l.code, label: l.name, checked: l.code === value, tag: l.beta ? t("lang.beta") : undefined }));
+    }
+    if (groups.download.length > 0) {
+      rows.push({ kind: "group", label: t("lang.download") });
+      groups.download.forEach((l) => rows.push({ kind: "item", value: l.code, label: l.name, checked: l.code === value, tag: l.beta ? t("lang.beta") : undefined, badge: t("packs.download") }));
+    }
+    return (
+      <button
+        type="button"
+        className="picker__trigger"
+        aria-haspopup="listbox"
+        aria-label={label}
+        onClick={async (e) => {
+          const chosen = await pickFromList(e.currentTarget.getBoundingClientRect(), rows, { search: true, searchPlaceholder: t("lang.search"), emptyText: t("lang.noMatch") });
+          if (chosen !== null) onChange(chosen);
+        }}
+      >
+        <span>{buttonText}</span>
+        <Icon name="chevron" size={15} />
+      </button>
+    );
+  }
 
   return (
     <Popover

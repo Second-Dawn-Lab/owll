@@ -39,7 +39,16 @@ export function LiveSettings() {
         <Switch label={t("live.settings.original")} checked={settings.liveShowOriginal} onChange={(v) => void patch({ liveShowOriginal: v })} />
       </Row>
       <Row title={t("live.settings.save")} description={t("live.settings.saveDesc")}>
-        <Switch label={t("live.settings.save")} checked={settings.liveSaveTranscripts} onChange={(v) => void patch({ liveSaveTranscripts: v })} />
+        <RadioGroup
+          name="liveSave"
+          value={settings.liveSaveChoice}
+          onChange={(v) => void patch({ liveSaveChoice: v })}
+          options={[
+            { value: "ask", label: t("live.save.ask") },
+            { value: "always", label: t("live.save.always") },
+            { value: "never", label: t("live.save.never") },
+          ]}
+        />
       </Row>
     </Section>
   );

@@ -7,7 +7,7 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use dawn_capture::{map, Screen};
 use dawn_hotkeys as hk;
@@ -26,6 +26,9 @@ struct Session {
     /// The overlay that gets keyboard focus (the monitor under the pointer).
     focus: usize,
     started: Instant,
+    /// An overlay has shown its screenshot. If none does within a few seconds the capture is given up, so a page that
+    /// failed to load cannot leave the shortcut blocked ("busy") for good.
+    ready: bool,
 }
 
 /// The result of the last capture that is shown in the main window: the captured image (a BMP,
@@ -125,7 +128,8 @@ pub fn start(app: &AppHandle) {
 
     let id = capture.next_id.fetch_add(1, Ordering::SeqCst);
     let geometry: Vec<(i32, i32, u32, u32)> = screens.iter().map(|s| (s.x, s.y, s.width, s.height)).collect();
-    *capture.session.lock().unwrap() = Some(Session { id, screens, focus, started });
+    *capture.session.lock().unwrap() = Some(Session { id, screens, focus, started, ready: false });
+    watch_overlays(app, id);
 
     for (i, (x, y, w, h)) in geometry.into_iter().enumerate() {
         let label = format!("{OVERLAY_PREFIX}{i}");
@@ -150,7 +154,6 @@ pub fn start(app: &AppHandle) {
                 }
             },
         };
-        crate::live::exclude_from_capture(&window);
         // Cover the monitor exactly. Move first so the window is on the monitor (and its DPI)
         // when it is resized.
         let _ = window.set_position(PhysicalPosition::new(x, y));
@@ -158,6 +161,23 @@ pub fn start(app: &AppHandle) {
         let _ = window.set_position(PhysicalPosition::new(x, y));
         let _ = app.emit_to(&label, "capture-open", ());
     }
+}
+
+/// How long the overlays get to show themselves before the capture is given up.
+const OVERLAY_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Give up a capture whose overlays never appeared (the page did not load, the window could not be created).
+fn watch_overlays(app: &AppHandle, id: u64) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(OVERLAY_TIMEOUT);
+        let capture = app.state::<Capture>();
+        let stuck = capture.session.lock().unwrap().as_ref().is_some_and(|s| s.id == id && !s.ready);
+        if stuck {
+            eprintln!("the capture overlay did not appear within {} s: capture cancelled", OVERLAY_TIMEOUT.as_secs());
+            cancel(&app);
+        }
+    });
 }
 
 /// Throw the screenshots away and close the overlays.
@@ -231,8 +251,11 @@ pub fn capture_overlay_info(capture: State<'_, Capture>, label: String) -> Optio
 #[tauri::command]
 pub fn capture_overlay_ready(app: AppHandle, capture: State<'_, Capture>, label: String) {
     let Some(index) = label.strip_prefix(OVERLAY_PREFIX).and_then(|i| i.parse::<usize>().ok()) else { return };
-    let (focus, started) = match capture.session.lock().unwrap().as_ref() {
-        Some(s) => (s.focus, s.started),
+    let (focus, started) = match capture.session.lock().unwrap().as_mut() {
+        Some(s) => {
+            s.ready = true;
+            (s.focus, s.started)
+        }
         None => return,
     };
     if let Some(window) = app.get_webview_window(&label) {

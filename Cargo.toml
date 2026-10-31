@@ -13,6 +13,17 @@ license = "MIT"
 # archives is far too slow unoptimized. Our own crates stay fast to rebuild.
 [profile.dev.package."*"]
 opt-level = 3
+# No debug information for dependencies (nobody steps into them): it makes the biggest crates need far less memory to compile.
+debug = false
+
+# The Windows API bindings are huge and hold no hot code: optimizing them only costs compiler memory and time. At opt-level 3
+# rustc needed several GB for them and crashed (0xc0000409) when the system was short of memory.
+[profile.dev.package.windows]
+opt-level = 0
+[profile.dev.package.windows-sys]
+opt-level = 0
+[profile.dev.package.windows-core]
+opt-level = 0
 
 # The dawn-core number-crunching crates stay fast in dev builds too (image scaling, BMP conversion).
 [profile.dev.package.dawn-ocr]

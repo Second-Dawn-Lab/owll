@@ -51,8 +51,11 @@ export interface Settings {
   /** Opacity of the bar's background (0.3 to 1). */
   liveOpacity: number;
   liveShowOriginal: boolean;
-  /** Keep the lines of a live session in the history when it ends. */
-  liveSaveTranscripts: boolean;
+  /** What to do with the conversation when a live session ends. */
+  liveSaveChoice: "ask" | "always" | "never";
+  /** The size the user gave the caption bar (logical pixels, 0 = automatic). */
+  liveBarWidth: number;
+  liveBarHeight: number;
 }
 
 /** Used until the backend answers, and by the browser mock. Keep in sync with Rust. */
@@ -93,5 +96,7 @@ export const defaultSettings: Settings = {
   liveFontSize: 28,
   liveOpacity: 0.82,
   liveShowOriginal: false,
-  liveSaveTranscripts: false,
+  liveSaveChoice: "ask",
+  liveBarWidth: 0,
+  liveBarHeight: 0,
 };

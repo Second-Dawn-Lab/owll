@@ -125,6 +125,20 @@ export function ShortcutsPage() {
   const { settings, patch } = useAppSettings();
   const [editing, setEditing] = useState<"translate" | "capture" | "live" | null>(null);
   const [hookError, setHookError] = useState<string | null>(null);
+  /** The shortcut that was just seen: a way to try a new shortcut right here. */
+  const [detected, setDetected] = useState<string | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const off = ipc.onShortcutDetected((name) => {
+      setDetected(name);
+      clearTimeout(timer);
+      timer = setTimeout(() => setDetected(null), 2500);
+    });
+    return () => {
+      clearTimeout(timer);
+      void off.then((fn) => fn());
+    };
+  }, []);
   const [conflicts, setConflicts] = useState<{ translate: string[]; capture: string[]; live: string[] }>({ translate: [], capture: [], live: [] });
 
   useEffect(() => {
@@ -141,7 +155,7 @@ export function ShortcutsPage() {
       <p className="page-note">{t("shortcuts.note")}</p>
       {hookError && <p className="shortcut-warn">{t("shortcuts.hookFailed", { error: hookError })}</p>}
       <Section>
-        <Row title={t("shortcuts.translate")} description={[t("shortcuts.translateDesc"), conflictText("translate")].filter(Boolean).join(" ")}>
+        <Row title={t("shortcuts.translate")} description={[t("shortcuts.translateDesc"), conflictText("translate"), detected === "translate" ? t("shortcuts.detected") : ""].filter(Boolean).join(" ")}>
           <Kbd keys={settings.translateShortcut} />
           <Button onClick={() => setEditing("translate")}>{t("shortcuts.change")}</Button>
           <Button
@@ -157,7 +171,7 @@ export function ShortcutsPage() {
             onChange={(v) => void patch({ translateShortcutEnabled: v })}
           />
         </Row>
-        <Row title={t("shortcuts.capture")} description={[t("shortcuts.captureDesc"), conflictText("capture")].filter(Boolean).join(" ")}>
+        <Row title={t("shortcuts.capture")} description={[t("shortcuts.captureDesc"), conflictText("capture"), detected === "capture" ? t("shortcuts.detected") : ""].filter(Boolean).join(" ")}>
           <Kbd keys={settings.captureShortcut} />
           <Button onClick={() => setEditing("capture")}>{t("shortcuts.change")}</Button>
           <Button
@@ -173,7 +187,7 @@ export function ShortcutsPage() {
             onChange={(v) => void patch({ captureShortcutEnabled: v })}
           />
         </Row>
-        <Row title={t("shortcuts.live")} description={[t("shortcuts.liveDesc"), conflictText("live")].filter(Boolean).join(" ")}>
+        <Row title={t("shortcuts.live")} description={[t("shortcuts.liveDesc"), conflictText("live"), detected === "live" ? t("shortcuts.detected") : ""].filter(Boolean).join(" ")}>
           <Kbd keys={settings.liveShortcut} />
           <Button onClick={() => setEditing("live")}>{t("shortcuts.change")}</Button>
           <Button variant="ghost" disabled={settings.liveShortcut === defaultSettings.liveShortcut} onClick={() => void patch({ liveShortcut: defaultSettings.liveShortcut })}>

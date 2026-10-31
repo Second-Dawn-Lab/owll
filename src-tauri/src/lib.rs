@@ -9,6 +9,7 @@ mod glossary;
 mod history;
 mod live;
 mod ocr;
+mod picker;
 mod placement;
 mod quick;
 mod settings;
@@ -38,6 +39,7 @@ pub fn run() {
         .manage(edit::EditSlot::default())
         .manage(dict::DictState::default())
         .manage(live::Live::new())
+        .manage(picker::Picker::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(quick::Quick::new())
         .manage(capture::Capture::new())
@@ -58,6 +60,10 @@ pub fn run() {
             docs::doc_default_output,
             docs::doc_translate,
             docs::doc_cancel,
+            picker::picker_open,
+            picker::picker_spec,
+            picker::picker_choose,
+            picker::picker_close,
             live::live_state,
             live::live_toggle,
             live::live_stop,
@@ -66,6 +72,10 @@ pub fn run() {
             live::live_languages,
             live::live_change_region,
             live::live_replace_bar,
+            live::live_close,
+            live::live_save_session,
+            live::live_set_save_choice,
+            commands::history_session,
             live::live_save_text,
             dict::dict_list,
             dict::dict_lookup,
@@ -149,6 +159,8 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             quick::on_window_event(window, event);
+            picker::on_window_event(window, event);
+            live::on_window_event(window, event);
             let WindowEvent::CloseRequested { api, .. } = event else { return };
             if window.label() != "main" {
                 return;

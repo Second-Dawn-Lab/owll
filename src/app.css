@@ -1988,3 +1988,136 @@ html:has(.cap) #root {
   padding: 0 10px;
   font-size: 13px;
 }
+.shortcut-hint {
+  margin: 6px 0 0;
+  color: var(--dw-text-2);
+  font-size: 13px;
+}
+
+/* The list window: lists that would be cut off in a small window open here (see src-tauri/src/picker.rs) */
+:root[data-window="picker"] body {
+  overflow: hidden;
+}
+.pickerwin {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  border: 1px solid var(--dw-border-strong);
+  background: var(--dw-surface);
+  color: var(--dw-text);
+  outline: none;
+}
+.pickerwin__list {
+  flex: 1;
+  max-height: none;
+  padding: 4px;
+  overflow-y: auto;
+}
+.pickerwin .picker__item {
+  width: 100%;
+}
+.pickerwin .picker__item--on {
+  background: var(--dw-brand-soft);
+}
+
+/* The conversation: a scrollable list that follows the newest line, a "Jump to latest" button, the question when a session ends */
+.livebar__scroller {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.livebar__scroller .livebar__lines {
+  flex: 1;
+  justify-content: flex-start;
+  gap: 8px;
+  padding-inline-end: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  user-select: text;
+}
+.livebar__line {
+  position: relative;
+}
+.livebar__time {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 2px;
+  color: var(--dw-text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.livebar__line .livebar__translation {
+  padding-inline-end: 62px;
+}
+.livebar__jump {
+  position: absolute;
+  inset-inline-start: 50%;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dw-brand);
+  color: var(--dw-on-brand);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transform: translateX(-50%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+.livebar__jump .dw-icon {
+  transform: none;
+}
+.livebar__ended {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dw-brand-soft);
+}
+.livebar__answers {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* A saved live captions session */
+.session {
+  display: grid;
+  gap: 10px;
+  max-height: 55vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  user-select: text;
+}
+.session li {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  padding-inline-end: 64px;
+}
+.session__time {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 2px;
+  color: var(--dw-text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.session__translation {
+  font-weight: 600;
+}
+.session__original {
+  color: var(--dw-text-2);
+  font-size: 0.9em;
+}

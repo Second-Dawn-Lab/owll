@@ -46,6 +46,8 @@ export function ShortcutDialog({
   const [pressed, setPressed] = useState<Pressed | null>(null);
   const [twice, setTwice] = useState(current.includes(" "));
   const [check, setCheck] = useState<ShortcutCheck | null>(null);
+  /** The last key pressed with a modifier cannot be part of a shortcut (arrows, punctuation, ...). */
+  const [unsupported, setUnsupported] = useState(false);
   const candidate = pressed ? buildShortcut(pressed, twice) : null;
 
   useEffect(() => {
@@ -65,14 +67,16 @@ export function ShortcutDialog({
       if (e.key === "Escape" || e.key === "Tab") return;
       e.preventDefault();
       if (!["Control", "Alt", "Shift", "Meta"].includes(e.key)) {
-        setPressed({ code: e.code, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey });
+        const next = { code: e.code, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey };
+        setUnsupported(keyName(next) === null);
+        setPressed(next);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
-  const conflictName = (n: string) => t(n === "capture" ? "shortcuts.capture" : "shortcuts.translate");
+  const conflictName = (n: string) => t(n === "capture" ? "shortcuts.capture" : n === "live" ? "shortcuts.live" : "shortcuts.translate");
   const usable = !!candidate && !!check?.valid;
 
   return (
@@ -102,7 +106,12 @@ export function ShortcutDialog({
           {t("shortcuts.conflict", { other: conflictName(c) })}
         </p>
       ))}
-      {check?.warning && <p className="shortcut-warn">{check.warning}</p>}
+      {unsupported && <p className="shortcut-warn">{t("shortcuts.unsupportedKey")}</p>}
+      {candidate && !twice && !unsupported && <p className="shortcut-hint">{t("shortcuts.singleHint")}</p>}
+      {check?.warning?.kind === "everyday" && <p className="shortcut-warn">{t("shortcuts.warn.everyday")}</p>}
+      {check?.warning?.kind === "known" && (
+        <p className="shortcut-warn">{t("shortcuts.warn.known", { keys: candidate ?? "", what: t(`shortcuts.known.${check.warning.id}` as "shortcuts.known.address") })}</p>
+      )}
     </Dialog>
   );
 }

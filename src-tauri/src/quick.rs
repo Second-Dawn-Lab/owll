@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use dawn_hotkeys::detector::Outcome;
-use dawn_hotkeys::shortcut::{everyday_shortcut_warning, Shortcut};
+use dawn_hotkeys::shortcut::{everyday_shortcut_warning, known_shortcut, Shortcut};
 use dawn_hotkeys::{self as hk, Hotkeys};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, Window, WindowEvent};
@@ -182,6 +182,9 @@ fn active_shortcuts(s: &Settings) -> Vec<(String, Shortcut)> {
 pub fn reconfigure(app: &AppHandle) {
     let quick = app.state::<Quick>();
     let list = active_shortcuts(&app.state::<AppState>().settings.lock().unwrap());
+    if trace_enabled() {
+        trace_line(&format!("hotkeys: listening for {:?}", list.iter().map(|(n, s)| format!("{n}={s}")).collect::<Vec<_>>()));
+    }
     let mut hotkeys = quick.hotkeys.lock().unwrap();
     if list.is_empty() {
         *hotkeys = None;
@@ -233,6 +236,23 @@ fn tidy_block_list(list: &[String]) -> Vec<String> {
     out
 }
 
+/// What is wrong with a valid shortcut, for the window to put into words.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum ShortcutWarning {
+    /// A single press of a standard editing shortcut: it would fire on every copy, paste, undo.
+    Everyday,
+    /// A well-known shortcut of other programs (`id`: "address", "print", ...): Owl-L only observes keys, so that program still reacts.
+    Known { id: &'static str },
+}
+
+fn warning_for(shortcut: &Shortcut) -> Option<ShortcutWarning> {
+    if everyday_shortcut_warning(shortcut).is_some() {
+        return Some(ShortcutWarning::Everyday);
+    }
+    known_shortcut(shortcut).map(|k| ShortcutWarning::Known { id: k.id })
+}
+
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShortcutCheck {
@@ -242,7 +262,7 @@ pub struct ShortcutCheck {
     canonical: Option<String>,
     /// Names of other Owl-L shortcuts that react to the same keys.
     conflicts: Vec<String>,
-    warning: Option<String>,
+    warning: Option<ShortcutWarning>,
 }
 
 /// Check a shortcut the user is about to set. `others` are the other shortcuts as `(name, text)`.
@@ -262,7 +282,7 @@ fn check(name: &str, text: &str, others: &[(&str, &str)]) -> ShortcutCheck {
         error: None,
         canonical: Some(shortcut.to_string()),
         conflicts,
-        warning: everyday_shortcut_warning(&shortcut).map(str::to_string),
+        warning: warning_for(&shortcut),
     }
 }
 
@@ -282,6 +302,13 @@ pub fn hotkey_status(quick: State<'_, Quick>) -> Option<String> {
 
 /// Runs on the hotkey worker thread, never inside the keyboard hook.
 fn on_hotkey(app: &AppHandle, name: &str, outcome: Outcome) {
+    if trace_enabled() {
+        trace_line(&format!("hotkey: {name} {outcome:?}"));
+    }
+    // The settings window shows that a shortcut was seen: a way to try a new shortcut right there.
+    if outcome == Outcome::Fired {
+        let _ = app.emit("shortcut-detected", name);
+    }
     if name == CAPTURE {
         if outcome == Outcome::Fired {
             crate::capture::start_from_shortcut(app);
@@ -456,7 +483,9 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
     match event {
         WindowEvent::Focused(true) => quick.focused_once.store(true, Ordering::Relaxed),
         WindowEvent::Focused(false) => {
-            if quick.focused_once.load(Ordering::Relaxed) && !quick.pinned.load(Ordering::Relaxed) {
+            // A list window next to one of its controls took the focus: that is not leaving.
+            let picking = app.try_state::<crate::picker::Picker>().is_some_and(|p| p.is_open());
+            if quick.focused_once.load(Ordering::Relaxed) && !quick.pinned.load(Ordering::Relaxed) && !picking {
                 handle_blur(window.clone());
             }
         }
@@ -693,7 +722,11 @@ mod tests {
         // A shortcut never conflicts with itself.
         assert!(check(TRANSLATE, "Ctrl+C C", &others).conflicts.is_empty());
 
-        assert!(check(TRANSLATE, "Ctrl+V", &others).warning.is_some());
+        assert_eq!(check(TRANSLATE, "Ctrl+V", &others).warning, Some(ShortcutWarning::Everyday));
+        // Other programs' shortcuts are named, for a single and for a double press: they still react.
+        assert_eq!(check(LIVE, "Ctrl+L", &others).warning, Some(ShortcutWarning::Known { id: "address" }));
+        assert_eq!(check(LIVE, "Ctrl+L L", &others).warning, Some(ShortcutWarning::Known { id: "address" }));
+        assert_eq!(check(LIVE, "Ctrl+Shift+L", &others).warning, None);
         let bad = check(TRANSLATE, "nope", &others);
         assert!(!bad.valid && bad.error.is_some());
     }
@@ -719,5 +752,59 @@ mod tests {
         assert!(Settings::default().capture_shortcut_enabled, "capture is on by default");
         // The default is Ctrl+C pressed twice.
         assert_eq!(Settings::default().translate_shortcut.parse::<Shortcut>().unwrap(), Shortcut::ctrl_c_c());
+    }
+
+    /// Settings as the window saves them -> the shortcuts the hook listens for -> the keys a user presses.
+    fn fired_names(settings: &Settings, keys: &[(u32, bool, u64)]) -> Vec<(String, Outcome)> {
+        let mut engine = dawn_hotkeys::engine::Engine::default();
+        engine.set_shortcuts(active_shortcuts(settings));
+        keys.iter().flat_map(|&(vk, down, time_ms)| engine.on_event(dawn_hotkeys::detector::KeyEvent { vk, down, time_ms })).collect()
+    }
+
+    const CTRL: u32 = 0xA2;
+    const L: u32 = 0x4C;
+
+    #[test]
+    fn every_owl_l_shortcut_works_as_a_single_or_a_double_press_through_the_same_engine() {
+        // The window saves the text; the backend tidies it; the hook's engine runs it. A double press is "Ctrl+L L".
+        for name in [TRANSLATE, CAPTURE, LIVE] {
+            for (text, presses) in [("Ctrl+L L", 2usize), ("Ctrl+L", 1)] {
+                let mut s = Settings::default();
+                let patch = match name {
+                    TRANSLATE => serde_json::json!({ "translateShortcut": text }),
+                    CAPTURE => serde_json::json!({ "captureShortcut": text }),
+                    _ => serde_json::json!({ "liveShortcut": text }),
+                };
+                s.merge(patch).unwrap();
+                // Only the shortcut under test may use Ctrl+L.
+                if name != TRANSLATE {
+                    s.translate_shortcut_enabled = false;
+                }
+                if name != CAPTURE {
+                    s.capture_shortcut_enabled = false;
+                }
+                if name != LIVE {
+                    s.live_shortcut_enabled = false;
+                }
+                normalize(&mut s).unwrap();
+                let mut keys = vec![(CTRL, true, 0)];
+                for i in 0..presses {
+                    keys.push((L, true, 100 + i as u64 * 150));
+                    keys.push((L, false, 140 + i as u64 * 150));
+                }
+                let fired: Vec<_> = fired_names(&s, &keys).into_iter().filter(|(_, o)| *o == Outcome::Fired).collect();
+                assert_eq!(fired, vec![(name.to_string(), Outcome::Fired)], "{name}: {text}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_double_press_that_is_too_slow_or_interrupted_does_not_fire_and_the_first_press_is_reported() {
+        let mut s = Settings::default();
+        s.merge(serde_json::json!({ "liveShortcut": "Ctrl+L L" })).unwrap();
+        let slow = fired_names(&s, &[(CTRL, true, 0), (L, true, 10), (L, false, 40), (L, true, 900), (L, false, 940)]);
+        assert!(slow.iter().all(|(n, o)| n != LIVE || *o != Outcome::Fired), "{slow:?}");
+        let first = fired_names(&s, &[(CTRL, true, 0), (L, true, 10)]);
+        assert!(first.contains(&(LIVE.to_string(), Outcome::FirstPress)));
     }
 }

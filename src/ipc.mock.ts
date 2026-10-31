@@ -145,8 +145,25 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
       return out({ path: a.path, name: String(a.path).split(/[\\/]/).pop(), kind: "docx", sizeBytes: 1234, detection: "ok", detected: "en", tooLarge: false });
     case "doc_default_output":
       return out(String(a.path).replace(/(\.[^.]+)$/, ` (${String(a.to).toUpperCase()})$1`));
-    case "live_state":
-      return out({ running: true, paused: false, locked: false, source: "auto", target: "de" });
+    case "picker_open":
+    case "picker_choose":
+    case "picker_close":
+      return out(undefined);
+    case "picker_spec":
+      return out(null);
+    case "live_state": {
+      // The browser mock plays a conversation so the caption bar can be tried: one line every 600 ms (once per page).
+      if (!(globalThis as { __liveDemo?: boolean }).__liveDemo) {
+        (globalThis as { __liveDemo?: boolean }).__liveDemo = true;
+        let n = 0;
+        const timer = setInterval(() => {
+          n++;
+          emit("live-lines", { replaceLast: false, lines: [{ original: `This is caption number ${n}, and it is a little longer.`, translation: `Das ist Untertitel Nummer ${n}, und er ist etwas länger.` }], from: "en", to: "de", ocrMs: 80, translateMs: 120 });
+          if (n >= 40) clearInterval(timer);
+        }, 600);
+      }
+      return out({ running: true, startedAt: Date.now(), paused: false, locked: false, source: "auto", target: "de" });
+    }
     case "live_toggle":
     case "live_stop":
     case "live_pause":
@@ -155,7 +172,13 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
     case "live_change_region":
     case "live_replace_bar":
     case "live_save_text":
+    case "live_close":
+    case "live_set_save_choice":
       return out(undefined);
+    case "live_save_session":
+      return out(true);
+    case "history_session":
+      return out([]);
     case "dict_list":
       return out([{ id: "de-en", languages: ["de", "en"], sizeBytes: 11502979, installed: false, license: "CC-BY-SA-4.0", attribution: "Wiktionary contributors", sourceUrl: "https://en.wiktionary.org", beta: false, entries: 103000 }]);
     case "dict_lookup":

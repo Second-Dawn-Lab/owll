@@ -1,5 +1,5 @@
 import { useSettings } from "@seconddawn/settings";
-import { Button, Icon, IconButton, Menu, Spinner, type MenuEntry } from "@seconddawn/ui";
+import { Button, Icon, IconButton, Spinner, type MenuEntry } from "@seconddawn/ui";
 import { useEffect, useRef, useState } from "react";
 import { languageName, useT } from "../i18n";
 import { ipc, type OcrProblem } from "../ipc";
@@ -9,6 +9,7 @@ import { CopyButton } from "./CopyButton";
 import { ocrProblemText } from "./packText";
 import { DetectionNotice } from "./DetectionNotice";
 import { LanguagePicker } from "./LanguagePicker";
+import { NativeMenu } from "./NativeMenu";
 import { useGlossaryVersion } from "./GlossaryPicker";
 import { ResultText } from "./ResultText";
 import { usePacks } from "./usePacks";
@@ -34,7 +35,6 @@ export function QuickPopup() {
   const [typed, setTyped] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
 
   // The text arrives complete, so translation starts at once; typing in an empty popup is debounced.
@@ -241,7 +241,7 @@ export function QuickPopup() {
             disabled={!text.trim()}
             onClick={() => void ipc.quickOpenInMain(text)}
           />
-          <Menu label={t("quick.more")} icon="more" entries={menu} open={menuOpen} onOpenChange={setMenuOpen} />
+          <NativeMenu label={t("quick.more")} entries={menu} />
         </div>
       </footer>
     </div>

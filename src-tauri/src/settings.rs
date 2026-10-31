@@ -66,8 +66,11 @@ pub struct Settings {
     pub live_opacity: f64,
     /// A small line with the original text above the translation.
     pub live_show_original: bool,
-    /// Keep the lines of a live session in the history when it ends (off: nothing is kept).
-    pub live_save_transcripts: bool,
+    /// What to do with the conversation when a live session ends: "ask" | "always" | "never".
+    pub live_save_choice: String,
+    /// The size the user gave the caption bar, logical pixels (0: automatic).
+    pub live_bar_width: u32,
+    pub live_bar_height: u32,
 }
 
 impl Default for Settings {
@@ -110,7 +113,9 @@ impl Default for Settings {
             live_font_size: 28,
             live_opacity: 0.82,
             live_show_original: false,
-            live_save_transcripts: false,
+            live_save_choice: "ask".into(),
+            live_bar_width: 0,
+            live_bar_height: 0,
         }
     }
 }

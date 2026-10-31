@@ -662,6 +662,12 @@ pub fn history_add(app: AppHandle, state: State<'_, AppState>, from: String, to:
     Ok(())
 }
 
+/// The lines of a saved live captions session.
+#[tauri::command]
+pub fn history_session(state: State<'_, AppState>, id: u64) -> Vec<crate::history::SessionLine> {
+    state.history.lock().unwrap().session(id)
+}
+
 #[tauri::command]
 pub fn history_delete(app: AppHandle, state: State<'_, AppState>, id: u64) -> CmdResult<()> {
     state.history.lock().unwrap().delete(id)?;

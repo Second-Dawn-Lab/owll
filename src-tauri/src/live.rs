@@ -4,7 +4,8 @@
 //! `dawn-capture` (a GDI copy of just that rectangle, about 1 ms of CPU); text is read with the same Windows OCR as the area
 //! capture; lines are translated with the same engine, detection, glossary and smart-target rules as everywhere else.
 //! The caption bar is a window of its own that is excluded from screen capture, so it can sit over or next to the region
-//! without ever being read. Nothing is written to disk unless the user turned transcripts on.
+//! without ever being read. The bar keeps the conversation of a session in memory (up to 2,000 lines); only when the session ends and
+//! the user chooses "Save" is it written to the history.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -37,17 +38,27 @@ struct Session {
     id: u64,
     control: Arc<Control>,
     region: Region,
+    /// Unix time in milliseconds.
+    started_at: u64,
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 #[derive(Default)]
 pub struct Live {
     session: Mutex<Option<Session>>,
     next_id: AtomicU64,
+    /// When the program last set the bar's size itself: resizes just after that are not the user's.
+    placed_at: Mutex<Option<Instant>>,
+    /// Counts the user's resizes, so only the last one of a burst is written to the settings.
+    resize_gen: AtomicU64,
 }
 
 impl Live {
     pub fn new() -> Self {
-        Self { session: Mutex::new(None), next_id: AtomicU64::new(1) }
+        Self { session: Mutex::new(None), next_id: AtomicU64::new(1), placed_at: Mutex::new(None), resize_gen: AtomicU64::new(0) }
     }
 
     pub fn running(&self) -> bool {
@@ -98,6 +109,7 @@ fn status(app: &AppHandle, state: &'static str, languages: Vec<String>, message:
 
 /// The shortcut, the menu and the buttons: stop a running session, or start one (the region is drawn first).
 pub fn toggle(app: &AppHandle) {
+    trace("live: toggle");
     let live = app.state::<Live>();
     if live.running() {
         // A locked bar cannot be clicked: the shortcut unlocks it first, and stops on the next press.
@@ -151,15 +163,21 @@ pub fn begin(app: &AppHandle, region: Region) {
             control.stop.store(false, Ordering::SeqCst);
             control.reset.store(true, Ordering::SeqCst);
             let id = live.next_id.fetch_add(1, Ordering::SeqCst);
-            *live.session.lock().unwrap() = Some(Session { id, control: control.clone(), region });
+            *live.session.lock().unwrap() = Some(Session { id, control: control.clone(), region, started_at: now_ms() });
             place_bar_for(&app, region);
             spawn_loop(&app, id, control, region);
             return;
         }
         let control = controls_from_settings(&state);
         let id = live.next_id.fetch_add(1, Ordering::SeqCst);
-        *live.session.lock().unwrap() = Some(Session { id, control: control.clone(), region });
-        if let Err(err) = open_bar(&app, region) {
+        let started_at = now_ms();
+        *live.session.lock().unwrap() = Some(Session { id, control: control.clone(), region, started_at });
+        // The bar of a session that ended is still open (it asked about saving): it starts afresh for the new one.
+        if let Some(bar) = app.get_webview_window(LABEL) {
+            let _ = bar.emit("live-reset", started_at);
+            place_bar_for(&app, region);
+            let _ = bar.show();
+        } else if let Err(err) = open_bar(&app, region) {
             eprintln!("could not open the caption bar: {err}");
             *live.session.lock().unwrap() = None;
             return;
@@ -168,13 +186,25 @@ pub fn begin(app: &AppHandle, region: Region) {
     });
 }
 
-/// Stop watching and close the bar.
+/// Stop watching. The bar stays open with the whole conversation and asks whether to save it (or does what the user chose
+/// to be remembered); it closes with `live_close`.
 pub fn stop(app: &AppHandle) {
     let live = app.state::<Live>();
     let session = live.session.lock().unwrap().take();
-    if let Some(session) = session {
-        session.control.stop.store(true, Ordering::SeqCst);
+    let Some(session) = session else { return };
+    session.control.stop.store(true, Ordering::SeqCst);
+    match app.get_webview_window(LABEL) {
+        Some(bar) => {
+            // A locked bar could not be clicked to answer.
+            let _ = bar.set_ignore_cursor_events(false);
+            let _ = bar.emit("live-ended", session.started_at);
+        }
+        None => {}
     }
+}
+
+/// Close the bar window.
+pub fn close_bar(app: &AppHandle) {
     if let Some(bar) = app.get_webview_window(LABEL) {
         let _ = bar.hide();
         let _ = bar.close();
@@ -195,6 +225,14 @@ pub fn unlock(app: &AppHandle) {
 
 // --- the bar window ------------------------------------------------------------
 
+/// The bar's size in logical pixels: the size the user gave it last time (kept in the settings) when there is one, else as wide as
+/// the region (480 to 1100) and as tall as `lines` lines of this font need.
+pub fn bar_size(saved: (u32, u32), region_width: u32, lines: u32, font_px: u32, show_original: bool) -> (u32, u32) {
+    let width = if saved.0 >= 320 { saved.0 } else { region_width.clamp(480, 1100) };
+    let height = if saved.1 >= 70 { saved.1 } else { bar_height(lines, font_px, show_original) };
+    (width, height)
+}
+
 /// The bar's height in logical pixels for this many lines of this font size.
 pub fn bar_height(lines: u32, font_px: u32, show_original: bool) -> u32 {
     let line = (font_px as f64 * 1.45).ceil() as u32;
@@ -209,16 +247,19 @@ fn monitors(app: &AppHandle) -> Vec<(dawn_live::Rect, f64)> {
 
 fn place_bar_for(app: &AppHandle, region: Region) {
     let Some(bar) = app.get_webview_window(LABEL) else { return };
-    let (lines, font, original, width) = {
+    let (width, height) = {
         let s = app.state::<AppState>().settings.lock().unwrap().clone();
-        (s.live_lines, s.live_font_size, s.live_show_original, (region.w as f64).clamp(480.0, 1100.0))
+        bar_size((s.live_bar_width, s.live_bar_height), 0, s.live_lines, s.live_font_size, s.live_show_original)
     };
+    // Without a saved width the bar is as wide as the region.
+    let width = if app.state::<AppState>().settings.lock().unwrap().live_bar_width >= 320 { width } else { (region.w as f64).clamp(480.0, 1100.0) as u32 };
     let all = monitors(app);
     let rects: Vec<dawn_live::Rect> = all.iter().map(|(r, _)| *r).collect();
     let area = dawn_live::Rect::new(region.x, region.y, region.w, region.h);
     let scale = all.iter().find(|(r, _)| r.x <= area.x + area.w as i32 / 2 && area.x + (area.w as i32) / 2 < r.right() && r.y <= area.y + area.h as i32 / 2 && area.y + (area.h as i32) / 2 < r.bottom()).map_or(1.0, |(_, s)| *s);
-    let (w, h) = (dawn_live::physical(width as u32, scale), dawn_live::physical(bar_height(lines, font, original), scale));
+    let (w, h) = (dawn_live::physical(width, scale), dawn_live::physical(height, scale));
     let spot = dawn_live::place_bar(area, w, h, &rects, dawn_live::physical(10, scale) as i32);
+    *app.state::<Live>().placed_at.lock().unwrap() = Some(Instant::now());
     let _ = bar.set_size(PhysicalSize::new(spot.w, spot.h));
     let _ = bar.set_position(PhysicalPosition::new(spot.x, spot.y));
 }
@@ -281,15 +322,6 @@ fn sleep_checking(control: &Control, ms: u64) {
     }
 }
 
-/// What the loop learned for the transcript.
-#[derive(Default)]
-struct Transcript {
-    original: Vec<String>,
-    translated: Vec<String>,
-    from: String,
-    to: String,
-}
-
 fn spawn_loop(app: &AppHandle, id: u64, control: Arc<Control>, region: Region) {
     let app = app.clone();
     std::thread::spawn(move || {
@@ -314,7 +346,6 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
     };
     let started = Instant::now();
     let mut pipeline = Pipeline::new();
-    let mut transcript = Transcript::default();
     let mut last_detected: Option<String> = None;
     let mut last_problem = Instant::now() - Duration::from_secs(60);
     let cancel = AtomicBool::new(false);
@@ -382,16 +413,6 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
                 Ok((from, to, lines)) => {
                     let translate_ms = translate_started.elapsed().as_millis() as u64;
                     trace(&format!("live: {} new line(s): read {ocr_ms} ms, translated {translate_ms} ms", lines.len()));
-                    if delta.replace_last {
-                        transcript.original.pop();
-                        transcript.translated.pop();
-                    }
-                    for l in &lines {
-                        transcript.original.push(l.original.clone());
-                        transcript.translated.push(l.translation.clone());
-                    }
-                    transcript.from = from.clone();
-                    transcript.to = to.clone();
                     let _ = app.emit_to(LABEL, "live-lines", LinesEvent { replace_last: delta.replace_last, lines, from, to, ocr_ms, translate_ms });
                 }
                 Err(Problem::Pack(language)) => status(app, "pack_missing", vec![language], ""),
@@ -405,19 +426,6 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
         let wait = interval_ms(Speed::parse(&settings.live_speed), step.idle_ms, on_battery(), ocr_ms).saturating_sub(work_ms);
         sleep_checking(control, wait);
     }
-
-    // The session is over: keep the transcript only when the user asked for it.
-    if settings_save_transcripts(app) && !transcript.original.is_empty() {
-        let state = app.state::<AppState>();
-        if state.settings.lock().unwrap().keep_history {
-            let _ = state.history.lock().unwrap().add(transcript.from.clone(), transcript.to.clone(), transcript.original.join("\n"), transcript.translated.join("\n"));
-            let _ = app.emit("history-changed", ());
-        }
-    }
-}
-
-fn settings_save_transcripts(app: &AppHandle) -> bool {
-    app.state::<AppState>().settings.lock().unwrap().live_save_transcripts
 }
 
 enum Problem {
@@ -466,6 +474,8 @@ fn translate_lines(app: &AppHandle, control: &Control, settings: &crate::setting
 #[serde(rename_all = "camelCase")]
 pub struct LiveState {
     running: bool,
+    /// Unix ms when the running session started (0 when none).
+    started_at: u64,
     paused: bool,
     locked: bool,
     source: String,
@@ -475,8 +485,8 @@ pub struct LiveState {
 #[tauri::command]
 pub fn live_state(live: State<'_, Live>) -> LiveState {
     match live.session.lock().unwrap().as_ref() {
-        Some(s) => LiveState { running: true, paused: s.control.paused.load(Ordering::Relaxed), locked: s.control.locked.load(Ordering::Relaxed), source: s.control.source.lock().unwrap().clone(), target: s.control.target.lock().unwrap().clone() },
-        None => LiveState { running: false, paused: false, locked: false, source: "auto".into(), target: String::new() },
+        Some(s) => LiveState { running: true, started_at: s.started_at, paused: s.control.paused.load(Ordering::Relaxed), locked: s.control.locked.load(Ordering::Relaxed), source: s.control.source.lock().unwrap().clone(), target: s.control.target.lock().unwrap().clone() },
+        None => LiveState { running: false, started_at: 0, paused: false, locked: false, source: "auto".into(), target: String::new() },
     }
 }
 
@@ -535,6 +545,73 @@ pub fn live_replace_bar(app: AppHandle, live: State<'_, Live>) {
     }
 }
 
+/// The conversation is over and the bar may go.
+#[tauri::command]
+pub fn live_close(app: AppHandle) {
+    close_bar(&app);
+}
+
+#[derive(serde::Deserialize)]
+pub struct SavedLine {
+    t: u64,
+    original: String,
+    translation: String,
+}
+
+/// "Save": the conversation of the session becomes one entry of the history (when the history is on).
+#[tauri::command]
+pub fn live_save_session(app: AppHandle, state: State<'_, AppState>, from: String, to: String, started_at: u64, lines: Vec<SavedLine>) -> CmdResult<bool> {
+    if lines.is_empty() || !state.settings.lock().unwrap().keep_history {
+        return Ok(false);
+    }
+    let lines: Vec<crate::history::SessionLine> = lines.into_iter().map(|l| crate::history::SessionLine { t: l.t, original: l.original, translation: l.translation }).collect();
+    state.history.lock().unwrap().add_session(from, to, started_at, now_ms(), &lines)?;
+    let _ = app.emit("history-changed", ());
+    Ok(true)
+}
+
+/// "Remember my choice": "always" or "never" (anything else is "ask").
+#[tauri::command]
+pub fn live_set_save_choice(app: AppHandle, state: State<'_, AppState>, choice: String) -> CmdResult<()> {
+    let choice = if choice == "always" || choice == "never" { choice } else { "ask".to_string() };
+    let updated = {
+        let mut settings = state.settings.lock().unwrap();
+        settings.live_save_choice = choice;
+        settings.save()?;
+        settings.clone()
+    };
+    let _ = app.emit("settings-changed", &updated);
+    Ok(())
+}
+
+/// The user resized the bar: remember the size (logical pixels) for the next session.
+pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
+    if window.label() != LABEL {
+        return;
+    }
+    let tauri::WindowEvent::Resized(size) = event else { return };
+    let app = window.app_handle().clone();
+    let live = app.state::<Live>();
+    if live.placed_at.lock().unwrap().is_some_and(|t| t.elapsed() < Duration::from_millis(600)) || size.width == 0 {
+        return;
+    }
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let (w, h) = ((size.width as f64 / scale).round() as u32, (size.height as f64 / scale).round() as u32);
+    let generation = live.resize_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    std::thread::spawn(move || {
+        // Only the last resize of a drag is written.
+        std::thread::sleep(Duration::from_millis(500));
+        if app.state::<Live>().resize_gen.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        let state = app.state::<AppState>();
+        let mut settings = state.settings.lock().unwrap();
+        settings.live_bar_width = w;
+        settings.live_bar_height = h;
+        let _ = settings.save();
+    });
+}
+
 /// Write the transcript the user exported (the path comes from the save dialog).
 #[tauri::command]
 pub fn live_save_text(path: String, text: String) -> CmdResult<()> {
@@ -551,6 +628,17 @@ mod tests {
         assert!(bar_height(2, 36, false) > bar_height(2, 28, false));
         assert!(bar_height(2, 28, true) > bar_height(2, 28, false));
         assert_eq!(bar_height(0, 20, false), bar_height(1, 20, false), "at least one line");
+    }
+
+    #[test]
+    fn the_bar_has_the_size_the_user_gave_it_else_one_from_the_region_and_the_lines_setting() {
+        // Nothing saved: as wide as the region (480 to 1100), as tall as the lines need.
+        assert_eq!(bar_size((0, 0), 300, 2, 28, false), (480, bar_height(2, 28, false)));
+        assert_eq!(bar_size((0, 0), 2000, 2, 28, false).0, 1100);
+        // A saved size wins, each side on its own; absurdly small saved values are ignored.
+        assert_eq!(bar_size((700, 420), 300, 2, 28, false), (700, 420));
+        assert_eq!(bar_size((700, 0), 300, 2, 28, false), (700, bar_height(2, 28, false)));
+        assert_eq!(bar_size((10, 10), 800, 1, 20, false), (800, bar_height(1, 20, false)));
     }
 }
 

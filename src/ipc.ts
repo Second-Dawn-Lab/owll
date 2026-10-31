@@ -97,7 +97,8 @@ export interface ShortcutCheck {
   canonical: string | null;
   /** Other Owl-L shortcuts on the same keys. */
   conflicts: string[];
-  warning: string | null;
+  /** Why a valid shortcut is a bad idea, if it is. */
+  warning: { kind: "everyday" } | { kind: "known"; id: string } | null;
 }
 
 /** Partial result streamed while a translation runs. */
@@ -343,11 +344,16 @@ export interface LiveStatus {
 
 export interface LiveState {
   running: boolean;
+  /** Unix ms when the running session started. */
+  startedAt: number;
   paused: boolean;
   locked: boolean;
   source: string;
   target: string;
 }
+
+/** What the list window asks for; the shape is `PickerSpec` in components/pickerModel.ts. */
+export type PickerSpecLike = import("./components/pickerModel").PickerSpec;
 
 export interface DocFailed {
   code: string;
@@ -362,6 +368,11 @@ export interface HistoryEntry {
   result: string;
   /** Unix time in milliseconds. */
   createdAt: number;
+  /** "" for a translation, "live" for a live captions session. */
+  kind?: string;
+  startedAt?: number;
+  endedAt?: number;
+  lineCount?: number;
 }
 
 export class IpcError extends Error {
@@ -471,6 +482,13 @@ export const ipc = {
   onDocProgress: (cb: (p: { done: number; total: number }) => void) => on<{ done: number; total: number }>("doc-progress", cb),
   onDocDone: (cb: (d: DocDone) => void) => on<DocDone>("doc-done", cb),
   /** Translate a document for editing (progress and failures use the doc events); the result waits in a draft. */
+  pickerOpen: (spec: unknown) => call<void>("picker_open", { spec }),
+  pickerSpec: () => call<PickerSpecLike | null>("picker_spec"),
+  pickerChoose: (value: string) => call<void>("picker_choose", { value }),
+  pickerClose: () => call<void>("picker_close"),
+  onPickerSpec: (cb: () => void) => on<null>("picker-spec", cb),
+  onPickerChoice: (cb: (e: { id: string; value: string }) => void) => on<{ id: string; value: string }>("picker-choice", cb),
+  onPickerClosed: (cb: (e: { id: string }) => void) => on<{ id: string }>("picker-closed", cb),
   liveState: () => call<LiveState>("live_state"),
   /** Start live captions (draw the region), or stop them when they run. */
   liveToggle: () => call<void>("live_toggle"),
@@ -480,7 +498,16 @@ export const ipc = {
   liveLanguages: (source: string, target: string) => call<void>("live_languages", { source, target }),
   liveChangeRegion: () => call<void>("live_change_region"),
   liveReplaceBar: () => call<void>("live_replace_bar"),
+  liveClose: () => call<void>("live_close"),
+  /** Keep the conversation of the session as one history entry. Resolves false when the history is off. */
+  liveSaveSession: (from: string, to: string, startedAt: number, lines: { t: number; original: string; translation: string }[]) =>
+    call<boolean>("live_save_session", { from, to, startedAt, lines }),
+  liveSetSaveChoice: (choice: "ask" | "always" | "never") => call<void>("live_set_save_choice", { choice }),
+  historySession: (id: number) => call<{ t: number; original: string; translation: string }[]>("history_session", { id }),
+  onLiveEnded: (cb: (startedAt: number) => void) => on<number>("live-ended", cb),
+  onLiveReset: (cb: (startedAt: number) => void) => on<number>("live-reset", cb),
   liveSaveText: (path: string, text: string) => call<void>("live_save_text", { path, text }),
+  onShortcutDetected: (cb: (name: string) => void) => on<string>("shortcut-detected", cb),
   onLiveLines: (cb: (d: LiveLines) => void) => on<LiveLines>("live-lines", cb),
   onLiveStatus: (cb: (d: LiveStatus) => void) => on<LiveStatus>("live-status", cb),
   onLiveCleared: (cb: () => void) => on<null>("live-cleared", cb),

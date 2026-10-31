@@ -6,6 +6,7 @@ import { CaptureOverlay } from "./components/CaptureOverlay";
 import { MainWindow } from "./components/MainWindow";
 import { QuickPopup } from "./components/QuickPopup";
 import { LiveBar } from "./components/LiveBar";
+import { PickerPage } from "./components/PickerPage";
 import { SettingsWindow } from "./settings/SettingsWindow";
 import { dictionaries, supportedLocales } from "./i18n";
 import { ipc, windowLabel } from "./ipc";
@@ -55,7 +56,7 @@ export function App() {
 
   return (
     <I18nProvider locale={locale} dictionaries={dictionaries}>
-      {ready && (label === "settings" ? <SettingsWindow /> : label === "quick" ? <QuickPopup /> : label.startsWith("overlay-") ? <CaptureOverlay /> : label === "live" ? <LiveBar /> : <MainWindow />)}
+      {ready && (label === "settings" ? <SettingsWindow /> : label === "quick" ? <QuickPopup /> : label.startsWith("overlay-") ? <CaptureOverlay /> : label === "live" ? <LiveBar /> : label === "picker" ? <PickerPage /> : <MainWindow />)}
     </I18nProvider>
   );
 }
