@@ -3,6 +3,13 @@
 All notable changes to Owl-L. The newest version is first. The text of a version's section is used
 as the release notes and shown in the in-app update notice.
 
+## [0.2.2](https://github.com/Second-Dawn-Lab/owll/compare/v0.2.1...v0.2.2) (2026-10-31)
+
+
+### Features
+
+* offline dictionary in the word menu, panel and Language packs ([14c4ed1](https://github.com/Second-Dawn-Lab/owll/commit/14c4ed1900a6f7ead405371f14f71a5d6864e25c))
+
 ## [0.2.1](https://github.com/Second-Dawn-Lab/owll/compare/v0.2.0...v0.2.1) (2026-10-30)
 
 
