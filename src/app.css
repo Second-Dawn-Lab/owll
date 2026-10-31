@@ -1739,3 +1739,114 @@ html:has(.cap) #root {
 .ed__tgt .sentalts {
   margin-top: 10px;
 }
+
+/* Dictionary: entries, the popup's tab, the collapsible panel, downloads */
+.dict {
+  display: grid;
+  gap: 10px;
+}
+.dict__entry {
+  display: grid;
+  gap: 3px;
+}
+.dict__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dict__head {
+  font-size: 1.05em;
+}
+.dict__pos {
+  color: var(--dw-text-3);
+  font-size: 0.85em;
+}
+.dict__via,
+.dict__grammar,
+.dict__note,
+.dict__gloss,
+.dict__tags {
+  margin: 0;
+  color: var(--dw-text-2);
+  font-size: 0.9em;
+}
+.dict__senses {
+  margin: 2px 0 0;
+  padding-inline-start: 20px;
+}
+.dict__senses li {
+  margin: 1px 0;
+}
+.dict__note {
+  display: inline;
+  color: var(--dw-text-3);
+}
+.dict__examples {
+  margin: 2px 0 0;
+  padding-inline-start: 20px;
+  color: var(--dw-text-2);
+  font-size: 0.9em;
+}
+.dict__chip {
+  margin-inline-end: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--dw-border);
+  border-radius: 999px;
+  background: var(--dw-surface);
+  color: var(--dw-brand-text);
+  font: inherit;
+  cursor: pointer;
+}
+.dict__nopack,
+.dict__none,
+.dict__download {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.dict__download {
+  grid-auto-flow: column;
+  align-items: center;
+}
+.dict__error {
+  color: var(--dw-warn);
+  font-size: 0.9em;
+}
+.alts__dict {
+  max-height: 260px;
+  padding: 8px 12px 10px;
+  overflow-y: auto;
+}
+.dictpanel {
+  border: 1px solid var(--dw-border);
+  border-radius: var(--dw-radius);
+  background: var(--dw-surface);
+}
+.dictpanel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.dictpanel__chevron {
+  transform: rotate(-90deg);
+  transition: transform 0.12s;
+}
+.dictpanel--open .dictpanel__chevron {
+  transform: none;
+}
+.dictpanel__word {
+  color: var(--dw-text-2);
+}
+.dictpanel__body {
+  max-height: 220px;
+  padding: 0 14px 12px;
+  overflow-y: auto;
+}

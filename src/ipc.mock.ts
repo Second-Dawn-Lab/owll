@@ -145,6 +145,21 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
       return out({ path: a.path, name: String(a.path).split(/[\\/]/).pop(), kind: "docx", sizeBytes: 1234, detection: "ok", detected: "en", tooLarge: false });
     case "doc_default_output":
       return out(String(a.path).replace(/(\.[^.]+)$/, ` (${String(a.to).toUpperCase()})$1`));
+    case "dict_list":
+      return out([{ id: "de-en", languages: ["de", "en"], sizeBytes: 11502979, installed: false, license: "CC-BY-SA-4.0", attribution: "Wiktionary contributors", sourceUrl: "https://en.wiktionary.org" }]);
+    case "dict_lookup":
+      return out({
+        status: "ok",
+        pack: null,
+        from: a.lang,
+        to: a.partner,
+        entries: [{ head: "Haus", pos: "noun", grammar: "Haus n (strong, genitive Hauses, plural H\u00e4user)", senses: [{ gloss: "house, building", words: [], tags: [] }, { gloss: "home (in various phrases)", words: [], tags: [] }], examples: [{ text: "Das Haus ist alt.", translation: "The house is old." }], matched: "form" }],
+        suggestions: [],
+      });
+    case "dict_install":
+    case "dict_cancel":
+    case "dict_remove":
+      return out(undefined);
     case "edit_start":
       await sleep(400);
       emit("edit-translated", { draftId: "0123456789abcdef", path: a.path, kind: "docx", units: 300, skipped: [] });

@@ -5,6 +5,8 @@ import { languageName, useT } from "../i18n";
 import { ipc, IpcError, type EditOpened, type TranslateResult } from "../ipc";
 import { settingsStore } from "../settings/store";
 import { headerLabel } from "./editLabels";
+import { DictionaryPanel } from "./DictionaryPanel";
+import { showWord, wordAt } from "./dictionaryStore";
 import * as model from "./editModel";
 import type { EditState, Filter, Row } from "./editModel";
 import { ResultText } from "./ResultText";
@@ -410,6 +412,8 @@ export function EditorView({ draftId, path: movedPath, onClose }: Props) {
         <div style={{ height: range.after }} aria-hidden="true" />
       </div>
 
+      <DictionaryPanel />
+
       <Dialog
         open={discarding}
         title={t("ed.discardTitle")}
@@ -531,7 +535,16 @@ const EditorRow = memo(function EditorRow({ index, row, text, edited, analysis, 
         )}
       </div>
       <div className="ed__cols">
-        <div className="ed__cell ed__src" dir="auto">
+        <div
+          className="ed__cell ed__src"
+          dir="auto"
+          onDoubleClick={() => {
+            // A word of the original: look it up (its language into the translation's).
+            const sel = window.getSelection()?.toString() ?? "";
+            const word = wordAt(sel, 0, sel.length);
+            if (word) showWord({ word, lang: from, partner: to }, true);
+          }}
+        >
           <Formatted text={row.source} styles={row.styles} />
         </div>
         <div className="ed__cell ed__tgt" dir="auto">

@@ -276,6 +276,45 @@ export interface DraftInfo {
   status: "ok" | "missing" | "maybe_changed";
 }
 
+/** A dictionary pack: one per language pair, both directions inside. */
+export interface DictInfo {
+  id: string;
+  languages: string[];
+  sizeBytes: number;
+  installed: boolean;
+  license: string;
+  attribution: string;
+  sourceUrl: string;
+}
+
+export interface DictEntry {
+  head: string;
+  pos: string;
+  grammar: string;
+  senses: { gloss: string; words: { w: string; n: string }[]; tags: string[] }[];
+  examples: { text: string; translation: string }[];
+  /** "head": the word is the headword; "form": it is an inflected form of it. */
+  matched: "head" | "form";
+}
+
+export interface DictLookup {
+  status: "ok" | "no_pack" | "unavailable";
+  /** The pack to download when `status` is "no_pack". */
+  pack: DictInfo | null;
+  from: string;
+  to: string;
+  entries: DictEntry[];
+  suggestions: string[];
+}
+
+export interface DictProgress {
+  id: string;
+  step: "downloading" | "verifying" | "extracting" | "done" | "failed" | "cancelled";
+  done: number;
+  total: number;
+  error: string | null;
+}
+
 export interface DocFailed {
   code: string;
   message: string;
@@ -398,6 +437,13 @@ export const ipc = {
   onDocProgress: (cb: (p: { done: number; total: number }) => void) => on<{ done: number; total: number }>("doc-progress", cb),
   onDocDone: (cb: (d: DocDone) => void) => on<DocDone>("doc-done", cb),
   /** Translate a document for editing (progress and failures use the doc events); the result waits in a draft. */
+  dictList: () => call<DictInfo[]>("dict_list"),
+  dictLookup: (word: string, lang: string, partner: string) => call<DictLookup>("dict_lookup", { word, lang, partner }),
+  dictInstall: (id: string) => call<void>("dict_install", { id }),
+  dictCancel: (id: string) => call<void>("dict_cancel", { id }),
+  dictRemove: (id: string) => call<void>("dict_remove", { id }),
+  onDictProgress: (cb: (p: DictProgress) => void) => on<DictProgress>("dict-progress", cb),
+  onDictChanged: (cb: () => void) => on<null>("dict-changed", cb),
   editStart: (path: string, from: string, to: string) => call<void>("edit_start", { path, from, to }),
   onEditTranslated: (cb: (d: EditTranslated) => void) => on<EditTranslated>("edit-translated", cb),
   /** Open a draft in the editor. `path` is the document when it was moved. */

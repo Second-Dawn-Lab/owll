@@ -7,6 +7,8 @@ import { settingsStore } from "../settings/store";
 import { trace } from "../trace";
 import { CopyButton } from "./CopyButton";
 import { DetectionNotice } from "./DetectionNotice";
+import { DictionaryPanel } from "./DictionaryPanel";
+import { showWord, wordAt } from "./dictionaryStore";
 import { GlossaryPicker, useGlossaryVersion } from "./GlossaryPicker";
 import { ResultText } from "./ResultText";
 import { LanguagePicker } from "./LanguagePicker";
@@ -253,6 +255,13 @@ export function TextTab({
             spellCheck={false}
             dir="auto"
             aria-label={t("lang.source")}
+            onDoubleClick={(e) => {
+              // A double click selects a word: look it up in the dictionary (the source language, into the target).
+              const area = e.currentTarget;
+              const word = wordAt(area.value, area.selectionStart, area.selectionEnd);
+              const lang = state.resolvedFrom ?? (settings.sourceLanguage !== "auto" ? settings.sourceLanguage : null);
+              if (word && lang) showWord({ word, lang, partner: state.effectiveTo ?? to }, true);
+            }}
             onChange={(e) => {
               trace(`input change: ${e.target.value.length} chars`);
               input.set(e.target.value);
@@ -329,6 +338,8 @@ export function TextTab({
           </footer>
         </section>
       </div>
+
+      <DictionaryPanel />
 
       <Dialog
         open={!!offered}

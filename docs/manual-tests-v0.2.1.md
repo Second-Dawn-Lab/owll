@@ -41,6 +41,19 @@ Use a Word file with headings, a table, a bold sentence and a link; a PowerPoint
 17. "Discard" asks first; afterwards the draft is gone and the original is unchanged.
 18. Switching tabs while editing keeps the draft; it can be continued from the Files tab.
 
-## Dictionary (not part of this release)
+## Dictionary
 
-19. The Dictionary tab in the word popup still says "Coming soon". The data decision is in `dawn-core/docs/dictionary.md`.
+19. Text tab, English to German, nothing downloaded: click a word of the translation and choose **Dictionary** in the word menu. It says the
+    German-English dictionary is not on this computer, with a **Download (12 MB)** button. Download: progress, then the entry appears
+    without reopening.
+20. Look up "erstaunt" (in a translation), "Häuser" and "ging": each shows the base form ("erstaunen", "Haus", "gehen") with a note
+    "ging is a form of gehen", the head line (gender, plural, verb forms), the meanings and examples.
+21. Double-click a word of the **source** text: the collapsible **Dictionary** panel under the two panes opens with its entry (English words
+    show German translations with gender: house: Haus n). Click the panel's title to fold it; it keeps the last word.
+22. A made-up word: "No entry for ..." and the closest headwords as buttons; clicking one looks it up.
+23. The same panel and double-click lookup work in the document editor (original column), and the word menu's Dictionary tab works there too.
+24. Settings, Language packs: a **Dictionaries** section with the pack, its size, "Installed" after the download, **Remove**, the license
+    (CC BY-SA 4.0) and the credit "Wiktionary contributors ... wiktextract ... kaikki.org". About shows the same credit.
+25. A language pair without a dictionary (for example French) says there is no dictionary for it yet. Offline after the download: unplug
+    the network and look words up.
+26. Switch the app to German: all new texts are German.

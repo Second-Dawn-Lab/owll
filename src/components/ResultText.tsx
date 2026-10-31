@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { ipc, type Alternative, type GlossaryTerm, type SegmentInfo } from "../ipc";
 import { altsSize, previewRest } from "./altsLayout";
+import { DictionaryEntry } from "./DictionaryEntry";
+import { showWord } from "./dictionaryStore";
 import { termAt, wordsOf, type Word } from "./resultWords";
 
 interface Props {
@@ -270,13 +272,18 @@ export function ResultText({ text, segments, terms = [], from, to, onPick, dimme
             </div>
             <div className="alts__tabs" role="tablist">
               {(["alternatives", "dictionary"] as const).map((tab) => (
-                <button key={tab} type="button" role="tab" aria-selected={panel.tab === tab} className={`alts__tab${panel.tab === tab ? " alts__tab--on" : ""}`} onClick={() => setPanel({ ...panel, tab })}>
+                <button key={tab} type="button" role="tab" aria-selected={panel.tab === tab} className={`alts__tab${panel.tab === tab ? " alts__tab--on" : ""}`} onClick={() => {
+                    setPanel({ ...panel, tab });
+                    if (tab === "dictionary") showWord({ word: panel.word.text, lang: to, partner: from });
+                  }}>
                   {t(tab === "alternatives" ? "alt.tab.alternatives" : "alt.tab.dictionary")}
                 </button>
               ))}
             </div>
             {panel.tab === "dictionary" ? (
-              <p className="alts__note">{t("alt.dictionarySoon")}</p>
+              <div className="alts__dict">
+                <DictionaryEntry query={{ word: panel.word.text, lang: to, partner: from }} compact onLookup={(word) => showWord({ word, lang: to, partner: from }, true)} />
+              </div>
             ) : (
               <ul ref={listRef} className="alts__list" role="listbox" aria-label={t("alt.title")}>
                 {panel.items === null && <li className="alts__note">{t("alt.loading")}</li>}

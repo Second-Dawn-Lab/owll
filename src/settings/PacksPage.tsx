@@ -4,6 +4,7 @@ import { packErrorText } from "../components/packText";
 import { formatBytes, usePacks } from "../components/usePacks";
 import { languageName, sortLanguages, useT } from "../i18n";
 import { ipc, type LanguageInfo } from "../ipc";
+import { DictionariesSection } from "./DictionariesSection";
 
 /** Models nobody needs any more after a language was hidden: offered for deletion. */
 interface DeleteOffer {
@@ -169,6 +170,7 @@ export function PacksPage() {
     <>
       <p className="page-note">{t("packs.desc")}</p>
       <Section>{sortLanguages(packs.languages, locale).map(row)}</Section>
+      <DictionariesSection />
       <OcrSection />
       <Dialog
         open={!!deleteOffer}

@@ -31,6 +31,7 @@ serde_json.workspace = true
 anyhow.workspace = true
 dawn-core = { path = "../../dawn-core/crates/dawn-core" }
 dawn-docs = { path = "../../dawn-core/crates/dawn-docs" }
+dawn-dict = { path = "../../dawn-core/crates/dawn-dict" }
 dawn-capture = { path = "../../dawn-core/crates/dawn-capture" }
 dawn-hotkeys = { path = "../../dawn-core/crates/dawn-hotkeys" }
 dawn-models = { path = "../../dawn-core/crates/dawn-models" }

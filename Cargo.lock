@@ -1100,6 +1100,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dawn-dict"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dawn-docs"
 version = "0.0.0"
 dependencies = [
@@ -3673,6 +3681,7 @@ dependencies = [
  "arboard",
  "dawn-capture",
  "dawn-core",
+ "dawn-dict",
  "dawn-docs",
  "dawn-hotkeys",
  "dawn-models",

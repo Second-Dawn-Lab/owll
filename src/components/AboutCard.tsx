@@ -25,6 +25,9 @@ export function AboutCard() {
       <div className="dw-row">
         <span className="dw-row__desc">{t("about.credits")}</span>
       </div>
+      <div className="dw-row">
+        <span className="dw-row__desc">{t("about.dictionary")}</span>
+      </div>
     </>
   );
 }
