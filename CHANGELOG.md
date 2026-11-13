@@ -3,6 +3,19 @@
 All notable changes to Owl-L. The newest version is first. The text of a version's section is used
 as the release notes and shown in the in-app update notice.
 
+## [0.3.0](https://github.com/Second-Dawn-Lab/owll/compare/v0.2.2...v0.3.0) (2026-10-31)
+
+
+### Features
+
+* caption bar lists in own window, conversation view, live sessions in history ([7156157](https://github.com/Second-Dawn-Lab/owll/commit/7156157d650e0d5e43af8361a488b2394869b3f8))
+* live captions with a caption bar, shortcut, tray entry and settings ([beeb688](https://github.com/Second-Dawn-Lab/owll/commit/beeb68872f83001c21a2e1195fc7d34867ffe60f))
+
+
+### Bug Fixes
+
+* lighter dev build profile and guarded run scripts ([7156157](https://github.com/Second-Dawn-Lab/owll/commit/7156157d650e0d5e43af8361a488b2394869b3f8))
+
 ## [0.2.2](https://github.com/Second-Dawn-Lab/owll/compare/v0.2.1...v0.2.2) (2026-10-31)
 
 
