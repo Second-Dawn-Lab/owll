@@ -10,7 +10,12 @@ import { DetectionNotice } from "./DetectionNotice";
 import { DictionaryPanel } from "./DictionaryPanel";
 import { showWord, wordAt } from "./dictionaryStore";
 import { GlossaryPicker, useGlossaryVersion } from "./GlossaryPicker";
+import { PolishNote } from "./PolishNote";
 import { ResultText } from "./ResultText";
+import { suggestionSpan, useSpellSuggestion } from "./useSpellSuggestion";
+import { swapPlan } from "./swap";
+import { TonePicker } from "./TonePicker";
+import { useQuality } from "./useQuality";
 import { LanguagePicker } from "./LanguagePicker";
 import { packErrorText } from "./packText";
 import { formatBytes, usePacks } from "./usePacks";
@@ -43,7 +48,12 @@ export function TextTab({
   const packs = usePacks();
   const input = useUndoableText("");
   const glossaryVersion = useGlossaryVersion();
+  const quality = useQuality();
+  /** Counts swaps: nothing of the old direction (result, sentences, alternatives) may stay on screen after one. */
+  const [swapCount, setSwapCount] = useState(0);
   const state = useTranslator(input.text, from, to, packs.epoch * 1000 + glossaryVersion + settings.glossaryActive.length * 7, {
+    polish: { enabled: quality.ready, tone: settings.tone, showFast: settings.qualityShowFast },
+    resetKey: swapCount,
     // A language is usable when it is built in or active; while the list loads, assume yes.
     isUsable: (code) => !packs.loaded || !!packs.languages.find((l) => l.code === code && (l.builtIn || l.installed)),
   });
@@ -119,12 +129,17 @@ export function TextTab({
 
   const canSwap = from !== "auto" || !!state.detected;
   const swap = () => {
-    const newTo = from === "auto" ? state.detected : from;
-    if (!newTo) return;
-    const newText = state.status === "done" ? state.result : input.text;
-    void patch({ sourceLanguage: to, targetLanguage: newTo });
-    input.set(newText, true);
+    const plan = swapPlan({ from, to, status: state.status, detected: state.detected, resolvedFrom: state.resolvedFrom, effectiveTo: state.effectiveTo, result: state.result, fresh: state.fresh, input: input.text });
+    if (!plan) return;
+    // Languages, text and the translator's state change in the same step; the new request starts from the new values.
+    setSwapCount((n) => n + 1);
+    void patch({ sourceLanguage: plan.source, targetLanguage: plan.target });
+    input.set(plan.text, true);
   };
+
+  // Without Quality mode: "Did you mean ...?" above the source for misspelled words (the model understands them itself).
+  const sourceLang = state.resolvedFrom ?? (from !== "auto" ? from : state.detected);
+  const spell = useSpellSuggestion(input.text, sourceLang, !quality.ready);
 
   const showDetected = from === "auto" ? state.detected : null;
   const hasText = input.text.length > 0;
@@ -220,6 +235,7 @@ export function TextTab({
             languages={packs.languages}
             onChange={(code) => choose("targetLanguage", code)}
           />
+          <TonePicker language={state.status === "done" && state.effectiveTo ? state.effectiveTo : to} />
         </div>
         <span className="langbar__side langbar__side--end">
           <GlossaryPicker />
@@ -247,6 +263,17 @@ export function TextTab({
 
       <div className="panes">
         <section className="pane">
+          {spell.suggestion && (
+            <div className="spellnote" role="status">
+              <span>
+                {t("spell.didYouMean")} <strong>{suggestionSpan(input.text, spell.suggestion)}</strong>?
+              </span>
+              <Button variant="ghost" onClick={() => input.set(spell.suggestion!.corrected, true)}>
+                {t("spell.apply")}
+              </Button>
+              <IconButton icon="close" label={t("spell.dismiss")} onClick={spell.dismiss} />
+            </div>
+          )}
           <textarea
             ref={inputRef}
             className="pane__text"
@@ -298,6 +325,7 @@ export function TextTab({
             )}
             {(state.status === "done" || (state.status === "translating" && state.result)) && (
               <ResultText
+                key={swapCount}
                 text={state.result}
                 segments={state.status === "done" ? state.segments : []}
                 terms={state.status === "done" ? state.glossaryTerms : []}
@@ -313,6 +341,19 @@ export function TextTab({
               <DetectionNotice state={state} packs={packs} onPickSource={(code) => void patch({ sourceLanguage: code })} />
             )}
           </div>
+          {state.status === "done" && state.segments.some((s) => s.unclean) && (
+            <div className="polishnote" role="status">
+              <Icon name="alert" size={14} />
+              <span className="polishnote__text">{t("quality.unclean")}</span>
+            </div>
+          )}
+          {state.status === "done" && state.polish === "failed" && state.polishErrorCode === "quality_unsupported_language" && (
+            <div className="polishnote" role="status">
+              <Icon name="alert" size={14} />
+              <span className="polishnote__text">{t("quality.unsupportedNote")}</span>
+            </div>
+          )}
+          {state.status === "done" && state.polish === "failed" && state.polishErrorCode !== "quality_unsupported_language" && <PolishNote code={state.polishErrorCode} message={state.polishError} onRetry={state.retryPolish} />}
           <footer className="pane__bar">
             <span className="pane__meta">
               {state.status === "translating" && state.result && (
@@ -325,6 +366,21 @@ export function TextTab({
                   <Icon name="text" size={13} /> {t("gloss.applied", { count: state.glossaryHits })}
                 </span>
               )}
+              {state.status === "done" && state.polish === "running" && (
+                <span className="pane__via" title={t("quality.polishingHint")}>
+                  <Spinner /> {quality.state === "loading" ? t("quality.state.loading") : t("quality.polishing")}
+                </span>
+              )}
+              {state.status === "done" && state.polished && (
+                <span className="pane__via pane__via--polished" title={t("quality.polishedHint")}>
+                  <Icon name="pencil" size={13} /> {t("quality.polished")}
+                </span>
+              )}
+              {state.status === "done" && state.fastShown && (
+                <span className="pane__via" title={t("quality.fastHint")}>
+                  <Icon name="text" size={13} /> {t("quality.fastShown")}
+                </span>
+              )}
               {state.status === "done" && state.pivoted && (
                 <span className="pane__via" title={t("text.viaEnglishHint")}>
                   <Icon name="swap" size={13} />
@@ -333,6 +389,11 @@ export function TextTab({
               )}
             </span>
             <div className="pane__actions">
+              {quality.ready && (state.polished || settings.qualityShowFast) && (
+                <Button variant="ghost" onClick={() => void patch({ qualityShowFast: !settings.qualityShowFast })}>
+                  {settings.qualityShowFast ? t("quality.showPolished") : t("quality.showFast")}
+                </Button>
+              )}
               <CopyButton text={state.status === "done" ? state.result : ""} />
             </div>
           </footer>

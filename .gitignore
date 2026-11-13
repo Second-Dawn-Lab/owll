@@ -1,4 +1,8 @@
 node_modules/
+
+# Local-only tests that read a real meeting recording (never committed)
+/src-tauri/src/live_local_test.rs
+/live-local/
 dist/
 target/
 target-*/

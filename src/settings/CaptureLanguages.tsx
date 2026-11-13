@@ -1,5 +1,6 @@
 import { useSettings } from "@seconddawn/settings";
-import { Button, Checkbox, Chip, IconButton, Select } from "@seconddawn/ui";
+import { Button, Checkbox, Chip, IconButton } from "@seconddawn/ui";
+import { Dropdown } from "../components/Dropdown";
 import { useEffect, useState } from "react";
 import { usePacks } from "../components/usePacks";
 import { languageName, useT } from "../i18n";
@@ -61,11 +62,12 @@ export function CaptureLanguages() {
             ))}
           </ul>
           {!automatic && chosen.length < MAX_LANGUAGES && candidates.length > 0 && (
-            <Select
+            <Dropdown
               label={t("ocr.add")}
               value=""
+              placeholder={t("ocr.add")}
               onChange={(code) => code && setLanguages([...chosen.map((c) => c.code), code])}
-              options={[{ value: "", label: t("ocr.add") }, ...candidates.map((l) => ({ value: l.code, label: nameOf(l.code) }))]}
+              options={candidates.map((l) => ({ value: l.code, label: nameOf(l.code) }))}
             />
           )}
         </div>

@@ -10,6 +10,8 @@ import { showWord, wordAt } from "./dictionaryStore";
 import * as model from "./editModel";
 import type { EditState, Filter, Row } from "./editModel";
 import { ResultText } from "./ResultText";
+import { TonePicker } from "./TonePicker";
+import { useQuality } from "./useQuality";
 import { applyPick } from "./resultWords";
 import { offsetOf, rowRange } from "./virtualRows";
 
@@ -216,6 +218,50 @@ export function EditorView({ draftId, path: movedPath, onClose }: Props) {
     }
   };
 
+  // Quality mode: polish one segment, or all of them one after the other (with progress and a cancel button).
+  const quality = useQuality();
+  const [polishAll, setPolishAll] = useState<{ done: number; total: number } | null>(null);
+  const polishCancelled = useRef(false);
+  const polishUnit = async (unit: number): Promise<boolean> => {
+    const s = stateRef.current;
+    if (!s || !opened) return false;
+    const row = s.rows[s.rowOf[unit]];
+    const current = model.textOf(s, unit);
+    if (!row || !current.trim()) return true;
+    setBusyUnits((b) => new Set(b).add(unit));
+    try {
+      const out = await ipc.qualityPolishText(row.source, current, opened.from, opened.to, settings.tone);
+      if (out !== current) setState((cur) => (cur ? model.setText(cur, unit, out) : cur));
+      analyses.current.delete(unit);
+      return true;
+    } catch {
+      return false; // the text stays as it was
+    } finally {
+      setBusyUnits((b) => {
+        const n = new Set(b);
+        n.delete(unit);
+        return n;
+      });
+    }
+  };
+  const polishDocument = async () => {
+    const s = stateRef.current;
+    if (!s) return;
+    const units = s.rows.flatMap((r) => (r.unit === null ? [] : [r.unit]));
+    polishCancelled.current = false;
+    setPolishAll({ done: 0, total: units.length });
+    for (let i = 0; i < units.length; i++) {
+      if (polishCancelled.current) break;
+      if (!(await polishUnit(units[i]))) break; // a model that cannot run ends the pass
+      setPolishAll({ done: i + 1, total: units.length });
+    }
+    setPolishAll(null);
+  };
+  const cancelPolish = () => {
+    polishCancelled.current = true;
+    void ipc.qualityPolishCancel();
+  };
+
   const doUndo = () =>
     setState((s) => {
       if (!s) return s;
@@ -338,6 +384,20 @@ export function EditorView({ draftId, path: movedPath, onClose }: Props) {
           {languageName(opened.from, locale)} {"→"} {languageName(opened.to, locale)}
         </span>
         <span className="topbar__spacer" />
+        <TonePicker language={opened.to} />
+        {quality.ready &&
+          (polishAll ? (
+            <span className="pane__busy">
+              <Spinner /> {t("ed.polishing", { done: polishAll.done, total: polishAll.total })}
+              <Button variant="ghost" onClick={cancelPolish}>
+                {t("common.cancel")}
+              </Button>
+            </span>
+          ) : (
+            <Button variant="ghost" icon="pencil" onClick={() => void polishDocument()}>
+              {t("ed.polishAll")}
+            </Button>
+          ))}
         <IconButton icon="undo" label={t("ed.undo")} disabled={!model.canUndo(state)} onClick={doUndo} />
         <IconButton icon="redo" label={t("ed.redo")} disabled={!model.canRedo(state)} onClick={doRedo} />
         <Checkbox checked={keepDraft} onChange={setKeepDraft}>
@@ -405,6 +465,7 @@ export function EditorView({ draftId, path: movedPath, onClose }: Props) {
               onCommit={commit}
               onPick={pick}
               onRetranslate={(unit) => (model.isEdited(state, unit) ? setRetranslating(unit) : void retranslate(unit))}
+              onPolish={quality.ready ? (unit) => void polishUnit(unit) : undefined}
               ensureAnalysis={ensureAnalysis}
             />
           );
@@ -472,11 +533,12 @@ interface RowProps {
   onCommit: (unit: number, text: string) => void;
   onPick: (unit: number, segment: number, sentence: string) => void;
   onRetranslate: (unit: number) => void;
+  onPolish?: (unit: number) => void;
   ensureAnalysis: (unit: number, text: string) => void;
 }
 
 /** One paragraph, cell or slide text: its place, the original, and the translation (editable). */
-const EditorRow = memo(function EditorRow({ index, row, text, edited, analysis, busy, active, onActivate, from, to, observer, onCommit, onPick, onRetranslate, ensureAnalysis }: RowProps) {
+const EditorRow = memo(function EditorRow({ index, row, text, edited, analysis, busy, active, onActivate, from, to, observer, onCommit, onPick, onRetranslate, onPolish, ensureAnalysis }: RowProps) {
   const { t } = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
@@ -531,6 +593,7 @@ const EditorRow = memo(function EditorRow({ index, row, text, edited, analysis, 
           <span className="ed__tools">
             <IconButton icon="pencil" label={t("ed.edit")} onClick={startEdit} />
             <IconButton icon="replace" label={t("ed.retranslate")} disabled={busy} onClick={() => unit !== null && onRetranslate(unit)} />
+            {onPolish && <IconButton icon="text" label={t("ed.polishOne")} disabled={busy} onClick={() => unit !== null && onPolish(unit)} />}
           </span>
         )}
       </div>

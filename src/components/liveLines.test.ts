@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addLines, choiceToRemember, decideSave, MAX_LINES, timeRange, transcriptText } from "./liveLines";
+import { addLines, choiceToRemember, decideSave, MAX_LINES, speakerPrefix, timeRange, transcriptText, upsertUtterance } from "./liveLines";
 import { atBottom, endOf, initialScroll, jump, onLines, onScroll, showJump } from "./scrollModel";
 
 const line = (n: number) => ({ original: `orig ${n}`, translation: `trans ${n}` });
@@ -84,5 +84,34 @@ describe("scrolling the conversation", () => {
     expect(jump()).toEqual({ following: true, unseen: 0 });
     // Scrolling while still away keeps the count.
     expect(onScroll(away, false).unseen).toBe(4);
+  });
+});
+
+describe("meeting utterances", () => {
+  const u = (id: number, translation: string, finished = false, polished = false) => ({ id, speaker: "Anna Keller", original: "o", translation, finished, polished, from: "en", to: "de", ocrMs: 0, translateMs: 0 });
+
+  it("an utterance is one line that grows, keeping its time", () => {
+    let list = upsertUtterance([], u(1, "Wir sollten"), 1000);
+    list = upsertUtterance(list, u(1, "Wir sollten uns die Zahlen ansehen"), 2000);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ translation: "Wir sollten uns die Zahlen ansehen", at: 1000, speaker: "Anna Keller", growing: true });
+  });
+
+  it("finishing and polishing update the same line; a new utterance is a new line", () => {
+    let list = upsertUtterance([], u(1, "a"), 1000);
+    list = upsertUtterance(list, u(1, "a", true), 1500);
+    expect(list[0].growing).toBe(false);
+    list = upsertUtterance(list, u(1, "a poliert", true, true), 2500);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ translation: "a poliert", polished: true, growing: false });
+    list = upsertUtterance(list, { ...u(2, "b"), speaker: "Bo Lindqvist" }, 3000);
+    expect(list.map((c) => c.speaker)).toEqual(["Anna Keller", "Bo Lindqvist"]);
+  });
+
+  it("the speaker is a label in the transcript, not part of the sentence", () => {
+    expect(speakerPrefix("Anna Keller")).toBe("Anna Keller: ");
+    expect(speakerPrefix(null)).toBe("");
+    const list = upsertUtterance([], u(1, "Guten Morgen."), 0);
+    expect(transcriptText(list)).toContain("] Anna Keller: Guten Morgen.");
   });
 });

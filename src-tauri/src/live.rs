@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use dawn_capture::{Grabber, Region};
-use dawn_live::{interval_ms, BlackEvent, Pipeline, Speed};
+use dawn_live::{interval_ms, BlackEvent, MeetingMode, MeetingUpdate, Pipeline, Speed};
 use dawn_translate::{Detection, TranslateError, TranslateOptions};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl, WebviewWindowBuilder};
@@ -54,11 +54,19 @@ pub struct Live {
     placed_at: Mutex<Option<Instant>>,
     /// Counts the user's resizes, so only the last one of a burst is written to the settings.
     resize_gen: AtomicU64,
+    /// The main window was open and stepped aside for the live captions: it comes back when the bar closes. A main window that
+    /// was already closed to the tray stays there.
+    restore_main: AtomicBool,
+}
+
+/// Should the main window be brought back when the caption bar closes?
+pub fn should_restore_main(stepped_aside: bool, visible_now: bool) -> bool {
+    stepped_aside && !visible_now
 }
 
 impl Live {
     pub fn new() -> Self {
-        Self { session: Mutex::new(None), next_id: AtomicU64::new(1), placed_at: Mutex::new(None), resize_gen: AtomicU64::new(0) }
+        Self { session: Mutex::new(None), next_id: AtomicU64::new(1), placed_at: Mutex::new(None), resize_gen: AtomicU64::new(0), restore_main: AtomicBool::new(false) }
     }
 
     pub fn running(&self) -> bool {
@@ -88,6 +96,24 @@ struct LinesEvent {
     from: String,
     to: String,
     /// Time spent recognizing and translating, for the trace and the latency report.
+    ocr_ms: u64,
+    translate_ms: u64,
+}
+
+/// An utterance of a meeting: the speaker, what was said and its translation. Sent again with the same `id` whenever the
+/// speaker said more, when it is over (`finished`) and when the polished translation replaces the fast one (`polished`).
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct UtteranceEvent {
+    id: u64,
+    speaker: Option<String>,
+    original: String,
+    translation: String,
+    finished: bool,
+    polished: bool,
+    from: String,
+    to: String,
+    /// Time recognizing the caption and translating, for the trace and the latency report.
     ocr_ms: u64,
     translate_ms: u64,
 }
@@ -203,11 +229,25 @@ pub fn stop(app: &AppHandle) {
     }
 }
 
-/// Close the bar window.
+/// The main window stepped aside for the region selection of the live captions (called once a region is chosen). Only a
+/// window that really was open is remembered; changing the region later never forgets it.
+pub fn remember_main_hidden(app: &AppHandle, hidden: bool) {
+    if hidden {
+        app.state::<Live>().restore_main.store(true, Ordering::SeqCst);
+    }
+}
+
+/// Close the bar window, whichever way the session ended (the close button, Esc, the shortcut, the answer to "save?"), and bring
+/// the main window back if it was open before the captions started.
 pub fn close_bar(app: &AppHandle) {
     if let Some(bar) = app.get_webview_window(LABEL) {
         let _ = bar.hide();
         let _ = bar.close();
+    }
+    let stepped_aside = app.state::<Live>().restore_main.swap(false, Ordering::SeqCst);
+    let visible = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+    if should_restore_main(stepped_aside, visible) {
+        crate::tray::show_main(app);
     }
 }
 
@@ -349,6 +389,9 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
     let mut last_detected: Option<String> = None;
     let mut last_problem = Instant::now() - Duration::from_secs(60);
     let cancel = AtomicBool::new(false);
+    // Meeting captions: the last translation of every running utterance (a finished one is polished from it).
+    let mut utterances: std::collections::HashMap<u64, (String, String, dawn_translate::Translation)> = std::collections::HashMap::new();
+    let polishing = Arc::new(AtomicBool::new(false));
     status(app, "running", vec![], "");
 
     while !control.stop.load(Ordering::Relaxed) {
@@ -367,6 +410,7 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
         let tick = Instant::now();
         let now_ms = started.elapsed().as_millis() as u64;
         let settings = state.settings.lock().unwrap().clone();
+        pipeline.set_meeting_mode(MeetingMode::parse(&settings.live_meeting));
 
         let frame = match grabber.grab() {
             Ok(f) => f,
@@ -406,6 +450,9 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
         if step.cleared {
             let _ = app.emit_to(LABEL, "live-cleared", ());
         }
+        if !step.updates.is_empty() {
+            handle_utterances(app, control, &settings, step.updates, ocr_ms, &mut last_detected, &cancel, &mut utterances, &polishing);
+        }
         let delta = step.delta;
         if !delta.is_empty() {
             let translate_started = Instant::now();
@@ -428,6 +475,67 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
     }
 }
 
+/// Meeting captions: translate every change of an utterance at once (the speaker is still talking), and polish it when it is
+/// over. The speaker's name is a label: it is never part of the text that is translated.
+#[allow(clippy::too_many_arguments)]
+fn handle_utterances(
+    app: &AppHandle,
+    control: &Control,
+    settings: &crate::settings::Settings,
+    updates: Vec<MeetingUpdate>,
+    ocr_ms: u64,
+    last_detected: &mut Option<String>,
+    cancel: &AtomicBool,
+    utterances: &mut std::collections::HashMap<u64, (String, String, dawn_translate::Translation)>,
+    polishing: &Arc<AtomicBool>,
+) {
+    for update in updates {
+        if update.finished {
+            // Over: the fast translation stays on screen; polish it in the background when that is on.
+            if let Some((from, to, t)) = utterances.remove(&update.id) {
+                let _ = app.emit_to(LABEL, "live-utterance", UtteranceEvent { id: update.id, speaker: update.speaker.clone(), original: update.text.clone(), translation: t.text.clone(), finished: true, polished: false, from: from.clone(), to: to.clone(), ocr_ms, translate_ms: 0 });
+                if !polishing.swap(true, Ordering::SeqCst) {
+                    let (app, polishing) = (app.clone(), polishing.clone());
+                    std::thread::spawn(move || {
+                        let segments: Vec<crate::quality::SegmentIo> = t.segments.iter().map(|s| crate::quality::SegmentIo::new(&s.source, &s.input, &s.target, s.start, s.end, s.pinned, s.unclean)).collect();
+                        if let Some(better) = crate::quality::live_polish_utterance(&app, &from, &to, &t.text, &segments) {
+                            let _ = app.emit_to(LABEL, "live-utterance", UtteranceEvent { id: update.id, speaker: update.speaker, original: update.text, translation: better, finished: true, polished: true, from, to, ocr_ms: 0, translate_ms: 0 });
+                        }
+                        polishing.store(false, Ordering::SeqCst);
+                    });
+                }
+            }
+            continue;
+        }
+        let started = Instant::now();
+        let one = vec![update.text.clone()];
+        let options = TranslateOptions { batch_size: 16, fast_beam: None, beam: if settings.live_speed == "fast" { 1 } else { 2 } };
+        match translate_one(app, control, settings, &one, &options, last_detected, cancel) {
+            Ok((from, to, t)) => {
+                let translate_ms = started.elapsed().as_millis() as u64;
+                trace(&format!("live: utterance {} grew to {} chars: read {ocr_ms} ms, translated {translate_ms} ms", update.id, update.text.chars().count()));
+                let _ = app.emit_to(LABEL, "live-utterance", UtteranceEvent { id: update.id, speaker: update.speaker.clone(), original: update.text.clone(), translation: t.text.clone(), finished: false, polished: false, from: from.clone(), to: to.clone(), ocr_ms, translate_ms });
+                utterances.insert(update.id, (from, to, t));
+            }
+            Err(Problem::Pack(language)) => status(app, "pack_missing", vec![language], ""),
+            Err(Problem::Undetected) => status(app, "undetected", vec![], ""),
+            Err(Problem::Other(message)) => status(app, "error", vec![], message),
+        }
+    }
+}
+
+/// The language pair of this session for `lines` (detected when the source is "auto"), and the translation of the first one.
+fn translate_one(app: &AppHandle, control: &Control, settings: &crate::settings::Settings, lines: &[String], options: &TranslateOptions, last_detected: &mut Option<String>, cancel: &AtomicBool) -> Result<(String, String, dawn_translate::Translation), Problem> {
+    let state = app.state::<AppState>();
+    let (from, to) = session_languages(app, control, settings, &lines.join(" "), last_detected)?;
+    match state.engine.translate_streaming(&lines[0], &from, &to, cancel, options, &mut |_| {}) {
+        Ok(t) => Ok((from, to, t)),
+        Err(TranslateError::ModelMissing(language)) => Err(Problem::Pack(language)),
+        Err(TranslateError::ModelLoad { model, .. }) => Err(Problem::Pack(state.catalog.language_for_model(&model).map(|l| l.code.clone()).unwrap_or_default())),
+        Err(other) => Err(Problem::Other(other.to_string())),
+    }
+}
+
 enum Problem {
     /// The language pack to download.
     Pack(String),
@@ -437,14 +545,16 @@ enum Problem {
 
 /// Translate the new lines, one by one (a line is one caption): the language is the one chosen in the bar, else the setting,
 /// else detected from the text; the target is never the source's own language.
-fn translate_lines(app: &AppHandle, control: &Control, settings: &crate::settings::Settings, lines: &[String], last_detected: &mut Option<String>, cancel: &AtomicBool) -> Result<(String, String, Vec<CaptionLine>), Problem> {
+/// The source language of the session (the one chosen in the bar, else detected from `text`) and the target, which is never
+/// the source's own language.
+fn session_languages(app: &AppHandle, control: &Control, settings: &crate::settings::Settings, text: &str, last_detected: &mut Option<String>) -> Result<(String, String), Problem> {
     let state = app.state::<AppState>();
     let chosen = control.source.lock().unwrap().clone();
     let from = if chosen != "auto" {
         chosen
     } else {
         let active = state.engine.installed_languages();
-        match dawn_translate::detect_in_context(&lines.join(" "), &active, last_detected.as_deref()) {
+        match dawn_translate::detect_in_context(text, &active, last_detected.as_deref()) {
             Detection::Language(code) => {
                 *last_detected = Some(code.clone());
                 code
@@ -454,12 +564,22 @@ fn translate_lines(app: &AppHandle, control: &Control, settings: &crate::setting
     };
     let wanted = control.target.lock().unwrap().clone();
     let to = crate::smart::smart_target(&from, &wanted, &settings.last_foreign_target);
+    Ok((from, to))
+}
+
+fn translate_lines(app: &AppHandle, control: &Control, settings: &crate::settings::Settings, lines: &[String], last_detected: &mut Option<String>, cancel: &AtomicBool) -> Result<(String, String, Vec<CaptionLine>), Problem> {
+    let state = app.state::<AppState>();
+    let (from, to) = session_languages(app, control, settings, &lines.join(" "), last_detected)?;
     let options = TranslateOptions { batch_size: 16, fast_beam: None, beam: if settings.live_speed == "fast" { 1 } else { 2 } };
     let mut out = Vec::new();
     for line in dawn_live::group_sentences(lines) {
         let line = &line;
         match state.engine.translate_streaming(line, &from, &to, cancel, &options, &mut |_| {}) {
-            Ok(t) => out.push(CaptionLine { original: line.clone(), translation: t.text }),
+            Ok(t) => {
+                // Quality mode in Calm speed: a polished line when the model is ready and quick enough, else the fast one.
+                let translation = crate::quality::live_polish(app, &from, &to, line, &t.text).unwrap_or(t.text);
+                out.push(CaptionLine { original: line.clone(), translation });
+            }
             Err(TranslateError::ModelMissing(language)) => return Err(Problem::Pack(language)),
             Err(TranslateError::ModelLoad { model, .. }) => return Err(Problem::Pack(state.catalog.language_for_model(&model).map(|l| l.code.clone()).unwrap_or_default())),
             Err(other) => return Err(Problem::Other(other.to_string())),
@@ -623,6 +743,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_main_window_comes_back_only_if_it_was_open_before_and_is_not_visible_now() {
+        assert!(should_restore_main(true, false), "it stepped aside, so it returns");
+        assert!(!should_restore_main(false, false), "it was closed to the tray before: it stays there");
+        assert!(!should_restore_main(true, true), "already back (the user opened it): nothing to do");
+        assert!(!should_restore_main(false, true));
+    }
+
+    #[test]
+    fn the_flag_is_taken_once_so_a_second_close_does_not_pop_the_window_up_again() {
+        let live = Live::new();
+        live.restore_main.store(true, Ordering::SeqCst);
+        assert!(live.restore_main.swap(false, Ordering::SeqCst));
+        assert!(!live.restore_main.swap(false, Ordering::SeqCst));
+    }
+
+    #[test]
     fn the_bar_grows_with_lines_font_and_the_original_line() {
         assert!(bar_height(2, 28, false) > bar_height(1, 28, false));
         assert!(bar_height(2, 36, false) > bar_height(2, 28, false));
@@ -761,3 +897,129 @@ foreach ($text in $scenes) {{
         assert!(reads < SEQUENCE.len(), "pictures that did not change were not read again");
     }
 }
+
+/// Meeting captions (made-up names, synthetic pictures) through the real pipeline, Windows OCR and the German model: how long
+/// after a new word appears on screen is its translation ready, for each speed? A virtual clock plays the loop of `run`: a look,
+/// the real work (reading, translating), then the wait of the speed; the speaker adds a word every 450 ms.
+///
+/// ```text
+/// cargo test -p owll meeting_delay -- --ignored --nocapture
+/// ```
+#[cfg(all(test, windows))]
+mod meeting_delay {
+    use std::sync::Arc;
+
+    use dawn_live::{interval_ms, MeetingMode, Pipeline, Speed};
+    use dawn_translate::{Ct2Engine, Ct2Options};
+
+    use super::*;
+
+    const WORDS: &str = "So the plan for the next quarter is to move the whole team to the new office and finish the budget before the end of the month";
+    const NAME: &str = "Anna Keller";
+    const WORD_EVERY_MS: u64 = 450;
+
+    /// What the caption box shows after `n` words: the last two lines of six words each, under the name, with the avatar.
+    fn scene(n: usize) -> String {
+        let words: Vec<&str> = WORDS.split_whitespace().take(n).collect();
+        let lines: Vec<String> = words.chunks(6).map(|c| c.join(" ")).collect();
+        let shown = &lines[lines.len().saturating_sub(2)..];
+        shown.join("|")
+    }
+
+    fn render(dir: &std::path::Path, count: usize) -> Vec<image::RgbaImage> {
+        let scenes: Vec<String> = (1..=count).map(scene).collect();
+        std::fs::write(dir.join("scenes.txt"), scenes.join("\n")).unwrap();
+        let script = format!(
+            r#"
+Add-Type -AssemblyName System.Drawing
+$scenes = Get-Content -Encoding UTF8 (Join-Path '{dir}' 'scenes.txt')
+$i = 0
+foreach ($text in $scenes) {{
+  $bmp = New-Object System.Drawing.Bitmap 900, 150
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.Clear([System.Drawing.Color]::FromArgb(32, 32, 32))
+  $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $g.FillEllipse((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(110, 110, 120))), 14, 40, 60, 60)
+  $small = New-Object System.Drawing.Font('Segoe UI', 20, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+  $g.DrawString('AK', $small, [System.Drawing.Brushes]::White, 24, 56)
+  $name = New-Object System.Drawing.Font('Segoe UI', 22, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+  $g.DrawString('{name}', $name, [System.Drawing.Brushes]::LightGray, 92, 8)
+  $font = New-Object System.Drawing.Font('Segoe UI', 32, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+  $y = 42
+  foreach ($line in $text.Split('|')) {{ if ($line) {{ $g.DrawString($line, $font, [System.Drawing.Brushes]::White, 92, $y) }}; $y += 48 }}
+  $bmp.Save((Join-Path '{dir}' ("scene$i.png")), [System.Drawing.Imaging.ImageFormat]::Png)
+  $i++
+}}
+"#,
+            dir = dir.to_string_lossy(),
+            name = NAME
+        );
+        let status = std::process::Command::new("powershell").args(["-NoProfile", "-Command", &script]).status().expect("powershell");
+        assert!(status.success());
+        (0..count).map(|i| image::open(dir.join(format!("scene{i}.png"))).unwrap().to_rgba8()).collect()
+    }
+
+    /// Plays the loop of one speed; returns for every word count the delay (ms) from its appearance to its translation.
+    fn play(engine: &Ct2Engine, frames: &[image::RgbaImage], speed: Speed) -> Vec<u64> {
+        let options = TranslateOptions { batch_size: 16, fast_beam: None, beam: if speed == Speed::Fast { 1 } else { 2 } };
+        let cancel = AtomicBool::new(false);
+        let mut pipeline = Pipeline::new();
+        pipeline.set_meeting_mode(MeetingMode::Auto);
+        let total_words = frames.len();
+        let end = (total_words as u64 + 2) * WORD_EVERY_MS;
+        // The time (virtual ms) at which a translation that contains `n` words was ready.
+        let mut ready: Vec<Option<u64>> = vec![None; total_words + 1];
+        let mut t = 0u64;
+        while t < end && ready[total_words].is_none() {
+            let n = ((t / WORD_EVERY_MS) as usize + 1).min(total_words);
+            let img = &frames[n - 1];
+            let work = Instant::now();
+            let mut ocr_ms = 0;
+            let step = pipeline.step(t, img.as_raw(), img.width(), img.height(), &mut || {
+                let started = Instant::now();
+                let out = ocr::recognize_screen_lines(&["en".to_string()], &["en".to_string(), "de".to_string()], dawn_ocr::OcrImage { width: img.width(), height: img.height(), rgba: img.as_raw().clone() }).ok();
+                ocr_ms = started.elapsed().as_millis() as u64;
+                out
+            });
+            for update in step.updates.iter().filter(|u| !u.finished) {
+                let _ = engine.translate_streaming(&update.text, "en", "de", &cancel, &options, &mut |_| {}).unwrap();
+                let done_at = t + work.elapsed().as_millis() as u64;
+                let words = update.text.split_whitespace().count().min(total_words);
+                for w in 1..=words {
+                    ready[w].get_or_insert(done_at);
+                }
+            }
+            let spent = work.elapsed().as_millis() as u64;
+            let wait = interval_ms(speed, step.idle_ms, false, ocr_ms).saturating_sub(spent);
+            t += spent + wait;
+        }
+        (1..=total_words).filter_map(|w| ready[w].map(|r| r.saturating_sub(w as u64 * WORD_EVERY_MS - WORD_EVERY_MS))).collect()
+    }
+
+    #[test]
+    #[ignore = "needs Windows OCR for English, PowerShell and the German pack"]
+    fn the_delay_from_a_new_word_to_its_translation_in_each_speed() {
+        let dir = std::env::temp_dir().join(format!("owll-meeting-delay-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let count = WORDS.split_whitespace().count();
+        let frames = render(&dir, count);
+        let store = dawn_models::ModelStore::open_default();
+        let catalog = Arc::new(dawn_models::Catalog::bundled());
+        assert!(store.is_language_installed(&catalog, "de"), "install German first");
+        let engine = Ct2Engine::new(store, catalog, &Ct2Options::default());
+        let _ = engine.translate_streaming("Hello.", "en", "de", &AtomicBool::new(false), &TranslateOptions { batch_size: 16, fast_beam: None, beam: 2 }, &mut |_| {});
+        for speed in [Speed::Fast, Speed::Normal, Speed::Calm] {
+            let mut delays = play(&engine, &frames, speed);
+            assert!(delays.len() >= count / 2, "most words were translated: {delays:?}");
+            delays.sort_unstable();
+            let mean = delays.iter().sum::<u64>() / delays.len() as u64;
+            println!("{speed:?}: delay from a new word to its translation: mean {mean} ms, median {} ms, worst {} ms ({} words, a word every {WORD_EVERY_MS} ms)", delays[delays.len() / 2], delays[delays.len() - 1], delays.len());
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(all(test, windows, live_local))]
+#[path = "live_local_test.rs"]
+mod live_local_test;

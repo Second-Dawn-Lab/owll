@@ -15,6 +15,7 @@ Owl-L translates text and screen areas on your own computer. No account, no subs
 - **Documents**: translate Word, PowerPoint, Excel, text, Markdown and PDF files (a PDF becomes a Word document) on your computer, keeping the formatting
 - **Word alternatives**: click a word of the translation to choose another one; the rest of the sentence follows
 - **Glossary**: terms that must be translated your way, with CSV import and export
+- **Quality mode** (optional, off by default): a small language model on your computer polishes the translation, sets formal or informal tone, inflects glossary terms, suggests better word alternatives, polishes documents and powers the **Write** tab (improve, shorten, change the register, fix grammar)
 - Downloadable **language packs**: install only the languages you need
 - **Ctrl+C+C** to translate selected text from any app (popup next to the pointer)
 - **Area selection**: draw a box anywhere on screen and translate the text inside (images, videos, locked PDFs)
@@ -28,7 +29,9 @@ Once a language pack is installed, translation runs fully on your device.
 - **No telemetry, no accounts, no analytics, no crash reports.** Owl-L never sends your text, screenshots, files or history anywhere.
 - **What does leave your machine, and when:**
   - *Language pack downloads*: only when you install a pack, a plain download from [Hugging Face](https://huggingface.co/Second-Dawn-Lab/owll-language-packs) (checked against a checksum). Hugging Face sees the usual connection data (your IP address and the file you ask for).
+  - *Quality mode downloads* (optional, off by default): only when you turn Quality mode on and press Download, a plain download of the small `llama-server` program and one language model from [Hugging Face](https://huggingface.co/Second-Dawn-Lab/owll-quality-packs) (exact copies of the authors' files; if that fails, the authors' own repositories, e.g. the llama.cpp release on GitHub), each checked against a checksum.
   - *Update checks*: at most once a day at startup, and when you click "Check for updates", Owl-L downloads a small file (`latest.json`) from this repository's latest GitHub release. The new installer is downloaded only if you click "Update and restart". GitHub sees the usual connection data.
+- **Quality mode keeps your text on this computer too.** The language model runs in a `llama-server` program that Owl-L starts on a port of this computer, or in an Ollama you already run on this computer. Owl-L refuses any address that is not `127.0.0.1`, `localhost` or `[::1]`. The model is loaded only when needed and freed after a few idle minutes.
 - Everything else (translation, text recognition, history, settings) stays on your computer. History can be turned off or cleared in the app.
 
 ## Download
@@ -60,11 +63,12 @@ MIT licensed. See [LICENSE](LICENSE).
 | Works | Planned |
 |---|---|
 | Two-pane live translation with CTranslate2 (Opus-MT) | Drag-and-drop document translation |
-| Language packs: download, cancel, resume, verify, remove, repair | Word alternatives |
-| English as the hub; other pairs go through English | Optional LLM quality mode |
-| Language detection among installed languages | Hosted language pack downloads |
+| Language packs: download, cancel, resume, verify, remove, repair | Optional GPU use for Quality mode |
+| English as the hub; other pairs go through English | Hosted Quality mode packs |
+| Language detection among installed languages | |
 | Ctrl+C+C popup, area selection with Windows OCR | |
 | Local history, tray icon, settings, single instance | |
+| Quality mode: polish, tone, glossary grammar, alternatives, Write tab | |
 
 ### Prerequisites
 
@@ -119,8 +123,8 @@ CI and releases check out the `dawn-core` commit or tag named in [`dawn-core.ref
 
 ```text
 src/             React UI (talks to Rust only through src/ipc.ts)
-src-tauri/src/   commands.rs (the API), settings.rs, history.rs, tray.rs, quick.rs, capture.rs, ocr.rs
-docs/            CLONE_SPEC.md (behavioral spec), quick-access.md, ur-ja-models.md, releasing.md (releases, updater keys, signing)
+src-tauri/src/   commands.rs (the API), settings.rs, history.rs, tray.rs, quick.rs, capture.rs, ocr.rs, quality.rs (Quality mode)
+docs/            CLONE_SPEC.md (behavioral spec), quick-access.md, manual-tests-v0.4.md, ur-ja-models.md, releasing.md (releases, updater keys, signing)
 assets/brand/    Owl-L app icon, Second Dawn logo and icon
 dawn-core.ref    pinned dawn-core version for CI and releases
 ```

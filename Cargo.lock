@@ -1128,6 +1128,18 @@ name = "dawn-live"
 version = "0.0.0"
 
 [[package]]
+name = "dawn-llm"
+version = "0.0.0"
+dependencies = [
+ "dawn-core",
+ "serde",
+ "serde_json",
+ "ureq",
+ "whatlang",
+ "windows 0.61.3",
+]
+
+[[package]]
 name = "dawn-models"
 version = "0.0.0"
 dependencies = [
@@ -1153,6 +1165,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "ct2rs",
+ "dawn-core",
  "dawn-models",
  "sentencepiece",
  "serde",
@@ -3689,6 +3702,7 @@ dependencies = [
  "dawn-docs",
  "dawn-hotkeys",
  "dawn-live",
+ "dawn-llm",
  "dawn-models",
  "dawn-ocr",
  "dawn-translate",
@@ -5941,6 +5955,8 @@ dependencies = [
  "once_cell",
  "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "url",
  "webpki-roots 0.26.11",
 ]

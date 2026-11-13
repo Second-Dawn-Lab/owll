@@ -10,8 +10,7 @@ import { PickerPage } from "./components/PickerPage";
 import { SettingsWindow } from "./settings/SettingsWindow";
 import { dictionaries, supportedLocales } from "./i18n";
 import { ipc, windowLabel } from "./ipc";
-import { buildShortcut } from "./settings/ShortcutEditor";
-import { sameCombo } from "./settings/shortcutMatch";
+import { isEditable, ShortcutRouter } from "./settings/shortcutRouter";
 import { settingsStore } from "./settings/store";
 
 const label = windowLabel();
@@ -27,22 +26,41 @@ export function App() {
 
   useEffect(() => applyTheme(settings.theme), [settings.theme]);
 
-  // The capture shortcut also works as a key press in Owl-L's own windows, whatever has the focus (a text box,
-  // a button, nothing): the page catches it before the web view can use it for something else, and starts the
-  // same capture as the keyboard hook does (a second start while one runs is ignored by the backend).
-  // Not in the settings window, where the shortcut dialog records new shortcuts.
+  // Every Owl-L shortcut (quick access, capture, live captions) also works as a key press in Owl-L's own windows,
+  // whatever has the focus (a text box, a button, nothing): the page catches it before the web view can use it for
+  // something else and reports it to the backend, which runs each key press once even if the keyboard hook saw it too.
+  // One router handles single and double presses alike. Not while the shortcut dialog records a new shortcut.
   useEffect(() => {
-    if (label !== "main" && label !== "quick") return;
-    if (!settings.captureShortcutEnabled) return;
+    if (label.startsWith("overlay-") || label === "picker") return;
+    const router = new ShortcutRouter([
+      { name: "translate", shortcut: settings.translateShortcut, enabled: settings.translateShortcutEnabled },
+      { name: "capture", shortcut: settings.captureShortcut, enabled: settings.captureShortcutEnabled },
+      { name: "live", shortcut: settings.liveShortcut, enabled: settings.liveShortcutEnabled },
+    ]);
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.repeat || !sameCombo(buildShortcut(e, false), settings.captureShortcut)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      void ipc.captureStart(true);
+      if (document.querySelector(".shortcut-capture")) return;
+      const fire = router.onKeyDown(
+        { code: e.code, repeat: e.repeat, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey, altGraph: e.getModifierState("AltGraph") },
+        e.timeStamp,
+        isEditable(document.activeElement),
+      );
+      if (!fire) return;
+      if (fire.consume) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      void ipc.shortcutFired(fire.name, fire.name === "translate" ? (window.getSelection()?.toString() ?? "") : undefined);
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [settings.captureShortcutEnabled, settings.captureShortcut]);
+  }, [
+    settings.translateShortcut,
+    settings.translateShortcutEnabled,
+    settings.captureShortcut,
+    settings.captureShortcutEnabled,
+    settings.liveShortcut,
+    settings.liveShortcutEnabled,
+  ]);
 
   // The caption bar is transparent around its rounded surface: the page styles look at this.
   useEffect(() => {

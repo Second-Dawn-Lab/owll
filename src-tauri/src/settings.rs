@@ -71,6 +71,26 @@ pub struct Settings {
     /// The size the user gave the caption bar, logical pixels (0: automatic).
     pub live_bar_width: u32,
     pub live_bar_height: u32,
+    /// Quality mode (an optional local language model): "off" | "builtin" | "ollama".
+    pub quality_mode: String,
+    /// The downloaded model in use (a catalog pack id); "" = the catalog's small one.
+    pub quality_model: String,
+    /// The Ollama model in use (its name); Ollama is only ever contacted on this computer.
+    pub ollama_model: String,
+    /// Where Ollama listens; only 127.0.0.1, localhost and [::1] are accepted.
+    pub ollama_endpoint: String,
+    /// Minutes without use after which the model is freed from memory.
+    pub quality_idle_minutes: u32,
+    /// Show the fast translation instead of the polished one.
+    pub quality_show_fast: bool,
+    /// "automatic" | "formal" | "informal": the tone of the translation (needs Quality mode).
+    pub tone: String,
+    /// Polish live captions too (plain subtitles: only in Calm speed; meeting captions: finished utterances).
+    pub live_polish: bool,
+    /// Meeting captions (a speaker name above growing text): "auto" detects them, "on" always, "off" never.
+    pub live_meeting: String,
+    /// Polish translated documents with Quality mode.
+    pub files_polish: bool,
 }
 
 impl Default for Settings {
@@ -116,6 +136,16 @@ impl Default for Settings {
             live_save_choice: "ask".into(),
             live_bar_width: 0,
             live_bar_height: 0,
+            quality_mode: "off".into(),
+            quality_model: String::new(),
+            ollama_model: String::new(),
+            ollama_endpoint: "127.0.0.1:11434".into(),
+            quality_idle_minutes: 5,
+            quality_show_fast: false,
+            tone: "automatic".into(),
+            live_polish: false,
+            live_meeting: "auto".into(),
+            files_polish: false,
         }
     }
 }
@@ -168,6 +198,19 @@ mod tests {
         assert!(old.capture_shortcut_enabled);
         assert_eq!(old.capture_shortcut, "Ctrl+Shift+O");
         assert!(old.capture_languages.is_empty(), "the old default [\"en\"] means automatic");
+    }
+
+    #[test]
+    fn quality_mode_is_off_by_default_and_old_settings_files_still_load() {
+        let fresh = Settings::default();
+        assert_eq!(fresh.quality_mode, "off");
+        assert_eq!(fresh.tone, "automatic");
+        assert_eq!(fresh.live_meeting, "auto");
+        assert!(!fresh.live_polish && !fresh.files_polish && !fresh.quality_show_fast);
+        let old: Settings = serde_json::from_str(r#"{"targetLanguage":"fr"}"#).unwrap();
+        assert_eq!(old.quality_mode, "off");
+        assert_eq!(old.quality_idle_minutes, 5);
+        assert_eq!(old.ollama_endpoint, "127.0.0.1:11434");
     }
 
     #[test]

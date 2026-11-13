@@ -12,7 +12,9 @@ import { LanguagePicker } from "./LanguagePicker";
 import { NativeMenu } from "./NativeMenu";
 import { useGlossaryVersion } from "./GlossaryPicker";
 import { ResultText } from "./ResultText";
+import { TonePicker } from "./TonePicker";
 import { usePacks } from "./usePacks";
+import { useQuality } from "./useQuality";
 import { useTranslator } from "./useTranslator";
 
 /**
@@ -39,8 +41,10 @@ export function QuickPopup() {
 
   // The text arrives complete, so translation starts at once; typing in an empty popup is debounced.
   const glossaryVersion = useGlossaryVersion();
+  const quality = useQuality();
   const state = useTranslator(text, from, settings.targetLanguage, packs.epoch * 1000 + glossaryVersion + settings.glossaryActive.length * 7, {
     debounceMs: typed ? 300 : 0,
+    polish: { enabled: quality.ready, tone: settings.tone, showFast: settings.qualityShowFast },
     isUsable: (code) => !packs.loaded || !!packs.languages.find((l) => l.code === code && (l.builtIn || l.installed)),
   });
   const target = state.effectiveTo ?? settings.targetLanguage;
@@ -115,6 +119,7 @@ export function QuickPopup() {
           languages={usable}
           onChange={(code) => void patch({ targetLanguage: code })}
         />
+        <TonePicker language={target} />
         <span className="quick__spacer" data-tauri-drag-region />
         <IconButton
           icon="pin"
@@ -222,9 +227,29 @@ export function QuickPopup() {
               {t("text.viaEnglish")}
             </span>
           )}
+          {state.status === "done" && state.polish === "running" && (
+            <span className="pane__via" title={t("quality.polishingHint")}>
+              <Spinner /> {quality.state === "loading" ? t("quality.state.loading") : t("quality.polishing")}
+            </span>
+          )}
+          {state.status === "done" && state.polish === "failed" && (
+            <span className="pane__via" title={state.polishError ?? ""}>
+              <Icon name="alert" size={13} /> {t("quality.polishFailed")}
+            </span>
+          )}
+          {state.status === "done" && state.polished && (
+            <span className="pane__via pane__via--polished" title={t("quality.polishedHint")}>
+              <Icon name="pencil" size={13} /> {t("quality.polished")}
+            </span>
+          )}
           {sourceGone && <span>{t("quick.sourceGone")}</span>}
         </span>
         <div className="pane__actions">
+          {quality.ready && (state.polished || settings.qualityShowFast) && (
+            <Button variant="ghost" onClick={() => void patch({ qualityShowFast: !settings.qualityShowFast })}>
+              {settings.qualityShowFast ? t("quality.showPolished") : t("quality.showFast")}
+            </Button>
+          )}
           <CopyButton text={state.status === "done" ? state.result : ""} />
           {!captured && <Button
             variant="ghost"

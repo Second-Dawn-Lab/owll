@@ -278,7 +278,8 @@ pub fn capture_cancel(app: AppHandle) {
 pub fn capture_finish(app: AppHandle, capture: State<'_, Capture>, label: String, rect: [f64; 4], viewport: [f64; 2]) -> CmdResult<()> {
     let index: usize = label.strip_prefix(OVERLAY_PREFIX).and_then(|i| i.parse().ok()).ok_or_else(|| CmdError::new("bad_request", "unknown overlay"))?;
     hide_overlays(&app);
-    capture.restore_main.store(false, Ordering::SeqCst);
+    // The main window stepped aside for this capture: live captions bring it back when their bar closes.
+    let main_was_hidden = capture.restore_main.swap(false, Ordering::SeqCst);
     if map::is_tiny(rect[2], rect[3]) {
         cancel(&app);
         return Ok(());
@@ -304,6 +305,7 @@ pub fn capture_finish(app: AppHandle, capture: State<'_, Capture>, label: String
         capture.busy.store(false, Ordering::SeqCst);
         capture.restore_after_result.store(false, Ordering::SeqCst);
         drop(session);
+        crate::live::remember_main_hidden(&app, main_was_hidden);
         crate::live::begin(&app, dawn_capture::Region { x: desktop.x, y: desktop.y, w: desktop.w, h: desktop.h });
         return Ok(());
     }

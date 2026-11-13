@@ -21,6 +21,18 @@ export function LiveSettings() {
           ]}
         />
       </Row>
+      <Row title={t("live.settings.meeting")} description={t("live.settings.meetingDesc")}>
+        <RadioGroup
+          name="liveMeeting"
+          value={settings.liveMeeting}
+          onChange={(v) => void patch({ liveMeeting: v })}
+          options={[
+            { value: "auto", label: t("live.meeting.auto") },
+            { value: "on", label: t("live.meeting.on") },
+            { value: "off", label: t("live.meeting.off") },
+          ]}
+        />
+      </Row>
       <Row title={t("live.settings.lines")} description={t("live.settings.linesDesc")}>
         <RadioGroup
           name="liveLines"

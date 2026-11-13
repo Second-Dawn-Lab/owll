@@ -163,6 +163,8 @@ export interface SegmentInfo {
   end: number;
   /** The user picked this sentence from the alternatives. */
   pinned: boolean;
+  /** The fast engine could not translate this sentence cleanly: what is shown is the part before a loop, or the source. */
+  unclean?: boolean;
 }
 
 export interface Alternative {
@@ -326,6 +328,20 @@ export interface LiveLine {
   translation: string;
 }
 
+/** An utterance of a meeting (Teams, Zoom, Meet): sent again with the same id while the speaker talks, when it is over, and when its polished translation is ready. */
+export interface LiveUtterance {
+  id: number;
+  speaker: string | null;
+  original: string;
+  translation: string;
+  finished: boolean;
+  polished: boolean;
+  from: string;
+  to: string;
+  ocrMs: number;
+  translateMs: number;
+}
+
 export interface LiveLines {
   /** The first line is the last one shown before, now longer: it replaces it. */
   replaceLast: boolean;
@@ -397,6 +413,96 @@ function on<T>(event: string, handler: (payload: T) => void): Promise<() => void
   return isTauri ? listen<T>(event, (e) => handler(e.payload)) : mockListen(event, handler);
 }
 
+
+// --- Quality mode (an optional local language model) --------------------------------
+
+export interface QualityPack {
+  id: string;
+  name: string;
+  /** "recommended" | "alternative" | "writing" for a model, "" for the engine. */
+  tier: string;
+  /** One line. */
+  description: string;
+  /** More text for the expandable "More" part. */
+  details: string;
+  sizeBytes: number;
+  ramBytes: number;
+  installed: boolean;
+  installing: boolean;
+  license: string;
+  attribution: string;
+  sourceUrl: string;
+  /** The languages the model is used for; empty = all. */
+  languages: string[];
+}
+
+export type QualityState = "off" | "not_set_up" | "downloading" | "ready" | "loading" | "loaded" | "unavailable";
+
+export interface QualityProgress {
+  /** The pack the user asked for; its engine download is reported under the same id with part "engine". */
+  id: string;
+  part: "engine" | "model";
+  step: "downloading" | "verifying" | "extracting" | "done" | "cancelled" | "failed";
+  done: number;
+  total: number;
+  /** Bytes per second. */
+  speed: number;
+  error: string | null;
+}
+
+export interface QualityStatus {
+  /** The engine (llama.cpp). */
+  runtime: QualityPack | null;
+  models: QualityPack[];
+  /** The translation model in use: the chosen one when it is installed, else the best installed one ("" when none is). */
+  selectedModel: string;
+  /** The model the user chose (it may not be installed). */
+  requestedModel: string;
+  /** The Write tab's model. */
+  writing: QualityPack | null;
+  ollama: { running: boolean; models: { name: string; size: number }[] };
+  memory: { total: number; available: number; lowTotal: boolean; tooLittleFree: boolean } | null;
+  /** The model is in memory right now. */
+  loaded: boolean;
+  state: QualityState;
+  /** What is missing: "model", "engine", "ollama", "ollama_models", "ollama_model" or "". */
+  missing: "model" | "engine" | "ollama" | "ollama_models" | "ollama_model" | "";
+  /** Quality mode is on and can be used right now. */
+  ready: boolean;
+  /** The latest progress of the running downloads. */
+  progress: QualityProgress[];
+}
+
+export interface PolishResult {
+  text: string;
+  segments: SegmentInfo[];
+  glossaryTerms: GlossaryTerm[];
+  polished: number;
+  kept: number;
+}
+
+export interface PolishProgress extends PolishResult {
+  requestId: number;
+  done: number;
+  total: number;
+}
+
+export type WriteKind = "improve" | "shorter" | "moreFormal" | "moreCasual" | "fixGrammar";
+
+export type WritePiece = { kind: "same"; text: string } | { kind: "change"; id: number; old: string; new: string };
+
+export interface WriteResult {
+  pieces: WritePiece[];
+  text: string;
+  /** The model that made it ("Phi-4 mini"). */
+  model: string;
+}
+
+export interface SpellSuggestion {
+  corrected: string;
+  fixes: { word: string; replacement: string }[];
+}
+
 export const ipc = {
   // Translation. Swap the Rust engine later without touching the UI.
   translate: (requestId: number, text: string, from: string, to: string) =>
@@ -455,6 +561,28 @@ export const ipc = {
   quickSetPinned: (pinned: boolean) => call<void>("quick_set_pinned", { pinned }),
   quickOpenInMain: (text: string) => call<void>("quick_open_in_main", { text }),
   quickBlockApp: (name: string) => call<void>("quick_block_app", { name }),
+  qualityStatus: () => call<QualityStatus>("quality_status"),
+  /** "Did you mean ...?" from the installed dictionary of the source language; null when there is nothing safe to suggest. */
+  spellSuggest: (text: string, lang: string) => call<SpellSuggestion | null>("spell_suggest", { text, lang }),
+  qualityInstall: (id: string) => call<void>("quality_install", { id }),
+  qualityCancel: (id: string) => call<void>("quality_cancel", { id }),
+  qualityRemove: (id: string) => call<void>("quality_remove", { id }),
+  qualityUnload: () => call<void>("quality_unload"),
+  /** Polish the sentences of a finished translation; `polish-progress` events carry the text sentence by sentence. */
+  qualityPolish: (requestId: number, text: string, from: string, to: string, segments: SegmentInfo[], tone: string) =>
+    call<PolishResult>("quality_polish", { requestId, text, from, to, segments, tone }),
+  qualityPolishCancel: () => call<void>("quality_polish_cancel"),
+  /** The editor: polish the text of one segment (returns the text unchanged when the model's answer was not usable). */
+  qualityPolishText: (source: string, current: string, from: string, to: string, tone: string) =>
+    call<string>("quality_polish_text", { source, current, from, to, tone }),
+  /** Polishing a document stopped (memory, runtime): the rest keeps the fast translation. */
+  onDocPolishStopped: (cb: (why: string) => void) => on<string>("doc-polish-stopped", cb),
+  qualityWrite: (kind: WriteKind, lang: string, text: string) => call<WriteResult>("quality_write", { kind, lang, text }),
+  onPolishProgress: (cb: (p: PolishProgress) => void) => on<PolishProgress>("polish-progress", cb),
+  onQualityProgress: (cb: (p: QualityProgress) => void) => on<QualityProgress>("quality-progress", cb),
+  onQualityChanged: (cb: () => void) => on<null>("quality-changed", cb),
+  /** A shortcut the page saw inside an Owl-L window; the backend runs it once even if the keyboard hook saw it too. */
+  shortcutFired: (name: "translate" | "capture" | "live", text?: string) => call<void>("shortcut_fired", { name, text: text ?? null }),
   takeQuickText: () => call<string | null>("take_quick_text"),
   alternatives: (from: string, to: string, source: string, input: string, sentence: string, wordStart: number, current: string) =>
     call<Alternative[]>("alternatives", { from, to, source, input, sentence, wordStart, current }),
@@ -509,6 +637,7 @@ export const ipc = {
   liveSaveText: (path: string, text: string) => call<void>("live_save_text", { path, text }),
   onShortcutDetected: (cb: (name: string) => void) => on<string>("shortcut-detected", cb),
   onLiveLines: (cb: (d: LiveLines) => void) => on<LiveLines>("live-lines", cb),
+  onLiveUtterance: (cb: (d: LiveUtterance) => void) => on<LiveUtterance>("live-utterance", cb),
   onLiveStatus: (cb: (d: LiveStatus) => void) => on<LiveStatus>("live-status", cb),
   onLiveCleared: (cb: () => void) => on<null>("live-cleared", cb),
   onLiveLocked: (cb: (locked: boolean) => void) => on<boolean>("live-locked", cb),

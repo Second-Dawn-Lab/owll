@@ -11,6 +11,7 @@ mod live;
 mod ocr;
 mod picker;
 mod placement;
+mod quality;
 mod quick;
 mod settings;
 mod smart;
@@ -39,6 +40,7 @@ pub fn run() {
         .manage(edit::EditSlot::default())
         .manage(dict::DictState::default())
         .manage(live::Live::new())
+        .manage(quality::Quality::default())
         .manage(picker::Picker::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(quick::Quick::new())
@@ -123,6 +125,17 @@ pub fn run() {
             quick::quick_open_in_main,
             quick::take_quick_text,
             quick::quick_block_app,
+            quick::shortcut_fired,
+            dict::spell_suggest,
+            quality::quality_status,
+            quality::quality_install,
+            quality::quality_cancel,
+            quality::quality_remove,
+            quality::quality_unload,
+            quality::quality_polish,
+            quality::quality_polish_cancel,
+            quality::quality_polish_text,
+            quality::quality_write,
             quick::quick_replace,
             capture::capture_overlay_info,
             capture::capture_overlay_ready,
@@ -151,6 +164,8 @@ pub fn run() {
             let wanted = app.state::<AppState>().settings.lock().unwrap().launch_at_start;
             commands::apply_autostart(app.handle(), wanted);
             quick::reconfigure(app.handle());
+            // Checks the idle time of Quality mode's model; loads nothing.
+            quality::start_idle_sweeper(app.handle());
             // Started by the autostart entry: stay in the tray.
             if !std::env::args().any(|a| a == "--hidden") {
                 tray::show_main(app.handle());
@@ -184,6 +199,8 @@ pub fn run() {
             // Remove the keyboard hook before the process ends.
             if let tauri::RunEvent::Exit = event {
                 quick::shutdown(app);
+                // The local runtime stops with the app.
+                app.state::<quality::Quality>().unload();
             }
         });
 }

@@ -46,11 +46,40 @@ pub(crate) struct EngineTranslator {
     error: Option<TranslateError>,
     /// Glossary terms put in, by the text that was translated (for the editor's "Glossary applied" filter).
     hits: std::collections::HashMap<String, usize>,
+    /// Quality mode: polish each translated text with the local model (the window and the tone it was started with).
+    polish: Option<(AppHandle, dawn_llm::Tone)>,
 }
 
 impl EngineTranslator {
     pub(crate) fn new(engine: Arc<Ct2Engine>, from: String, to: String, cancel: Arc<AtomicBool>) -> Self {
-        Self { engine, from, to, cancel, error: None, hits: Default::default() }
+        Self { engine, from, to, cancel, error: None, hits: Default::default(), polish: None }
+    }
+
+    /// Polish the translations with Quality mode when the setting asks for it and the model can be used.
+    pub(crate) fn with_polish(mut self, app: &AppHandle) -> Self {
+        self.polish = crate::quality::documents_polish_tone(app).map(|tone| (app.clone(), tone));
+        self
+    }
+
+    /// The text after the model polished its sentences; the fast text when polishing is off, fails or is stopped.
+    fn polished(&mut self, t: &dawn_translate::Translation, source: &str) -> Result<String, DocError> {
+        let Some((app, tone)) = self.polish.clone() else { return Ok(t.text.clone()) };
+        let segments: Vec<crate::quality::SegmentIo> = t
+            .segments
+            .iter()
+            .map(|s| crate::quality::SegmentIo::new(&s.source, &s.input, &s.target, s.start, s.end, s.pinned, s.unclean))
+            .collect();
+        let _ = source;
+        match crate::quality::polish_translation(&app, &self.from, &self.to, &t.text, &segments, tone, &self.cancel) {
+            Ok(text) => Ok(text),
+            Err(e) if e.code == "cancelled" => Err(DocError::Cancelled),
+            Err(e) => {
+                // The model cannot run (memory, a stopped runtime): the rest of the document keeps the fast translation.
+                self.polish = None;
+                let _ = app.emit("doc-polish-stopped", e.message.clone());
+                Ok(t.text.clone())
+            }
+        }
     }
 
     pub(crate) fn take_error(&mut self) -> Option<TranslateError> {
@@ -72,7 +101,8 @@ impl Translator for EngineTranslator {
                     if t.glossary_hits > 0 {
                         self.hits.insert(text.clone(), t.glossary_hits);
                     }
-                    out.push(t.text);
+                    let text_out = self.polished(&t, text)?;
+                    out.push(text_out);
                 }
                 Err(TranslateError::Cancelled) => return Err(DocError::Cancelled),
                 Err(err) => {
@@ -208,7 +238,7 @@ pub fn doc_translate(app: AppHandle, state: State<'_, AppState>, job: State<'_, 
     let engine = state.engine.clone();
     let catalog = state.catalog.clone();
     std::thread::spawn(move || {
-        let mut translator = EngineTranslator::new(engine, from.clone(), to.clone(), cancel);
+        let mut translator = EngineTranslator::new(engine, from.clone(), to.clone(), cancel).with_polish(&app);
         let progress_app = app.clone();
         let result = dawn_docs::translate_document(Path::new(&path), Path::new(&output), &mut translator, &mut |p: Progress| {
             let _ = progress_app.emit("doc-progress", DocProgress { done: p.done, total: p.total });

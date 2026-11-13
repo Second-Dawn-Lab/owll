@@ -16,9 +16,10 @@ import { EditorView } from "./EditorView";
 import { ImagesTab } from "./ImagesTab";
 import { TextTab } from "./TextTab";
 import { UpdateNotice } from "./UpdateNotice";
+import { WriteTab } from "./WriteTab";
 import { WindowControls } from "./WindowControls";
 
-type Tab = "text" | "images" | "files" | "history";
+type Tab = "text" | "write" | "images" | "files" | "history";
 
 export function MainWindow() {
   const { t } = useT();
@@ -145,6 +146,7 @@ export function MainWindow() {
 
   const tabs: NavItem<Tab>[] = [
     { id: "text", label: t("tab.text"), icon: "text" },
+    { id: "write", label: t("tab.write"), icon: "pencil" },
     { id: "images", label: t("tab.images"), icon: "image" },
     { id: "files", label: t("tab.files"), icon: "file" },
     { id: "history", label: t("tab.history"), icon: "clock" },
@@ -191,6 +193,7 @@ export function MainWindow() {
         <div className="tabpanel" hidden={tab !== "text" || !!editing}>
           <TextTab incoming={incoming} quick={quick} capture={captureNote} onDismissCapture={() => setCaptureNote(null)} />
         </div>
+        {tab === "write" && !editing && <WriteTab />}
         {tab === "images" && !editing && <ImagesTab captured={captured} dropped={droppedImage} />}
         {/* The Files tab stays mounted while a document is edited, so its list is still there afterwards. */}
         {tab === "files" && (

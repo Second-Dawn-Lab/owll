@@ -35,3 +35,14 @@ Windows waits for a low-level hook callback on every key press. If it takes long
 ## Custom title bar and Snap Layouts
 
 Windows are drawn without a native title bar. The page draws the buttons and drags with `data-tauri-drag-region`. For Snap Layouts, `titlebar.rs` subclasses the window and the WebView2 render window so that Windows' hit test sees the maximize button as `HTMAXBUTTON` (no keystrokes are simulated; `tauri-plugin-decorum` was rejected because it opens the flyout by pressing Win+Z). Needs a Windows 11 check by hand.
+
+## Shortcuts inside Owl-L's own windows
+
+The keyboard hook sees keys in other programs. Inside Owl-L's own windows (main window, quick popup, caption bar, settings) a focused text box and WebView2's built-in browser shortcuts can swallow a key press before it matters, so every Owl-L shortcut (quick access, capture, live captions, and any added later) goes through **one in-page mechanism**:
+
+1. `src/settings/shortcutRouter.ts` holds a `ShortcutRouter` with one binding per shortcut. It matches single presses (`Ctrl+Shift+L`) and double presses (`Ctrl+L L`, `Ctrl+C C`, 400 ms) with exactly the stored modifiers, in the capture phase of the window's `keydown`.
+2. Normal editing is left alone: the first press of a double shortcut passes through (so `Ctrl+C C` still copies the first time); a single `Shift+letter` or `Ctrl+C/V/X/A/Z/Y` in a text box is not a shortcut; AltGr (Ctrl+Alt on many layouts) never is; auto-repeat and modifier keys on their own are ignored. Not while the shortcut dialog records a new shortcut.
+3. A match calls the backend command `shortcut_fired(name, selection)`. The hook may have seen the same key press; `Quick::claim_fire` keeps only the first report of a shortcut within 700 ms, so a shortcut runs once, and a `Ctrl+L L` that toggles live captions does not start and stop them.
+4. Quick access from inside Owl-L uses the selected text of the page (the hook ignores copying inside Owl-L itself).
+
+Tests: `shortcutRouter.test.ts` (routing in a focused text box, double presses, editing keys, AltGr) and `a_key_press_seen_by_the_hook_and_the_page_runs_once` in `quick.rs`.

@@ -167,6 +167,46 @@ pub async fn dict_lookup(app: AppHandle, word: String, lang: String, partner: St
     .map_err(|e| CmdError::new("engine", e))?
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpellFixOut {
+    word: String,
+    replacement: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpellOut {
+    /// The text with every suggestion applied.
+    corrected: String,
+    fixes: Vec<SpellFixOut>,
+}
+
+/// "Did you mean ...?" for text in `lang`: misspelled words that the dictionary of that language does not know and that have one
+/// close headword. Only an installed dictionary is used (nothing is downloaded), only the source language is looked at, and
+/// `None` means there is nothing safe to suggest.
+#[tauri::command]
+pub async fn spell_suggest(app: AppHandle, text: String, lang: String) -> CmdResult<Option<SpellOut>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let dict_state = app.state::<DictState>();
+        let Some((pack, to)) = state.catalog.dictionaries.iter().find_map(|p| {
+            let to = p.languages.iter().find(|l| **l != lang)?;
+            (p.languages.contains(&lang) && state.store.is_dictionary_installed(&p.id)).then(|| (p.clone(), to.clone()))
+        }) else {
+            return Ok(None);
+        };
+        let dict = open_dict(&state, &dict_state, &pack, &lang, &to)?;
+        let fixes = dawn_dict::spell_fixes(&dict, &text);
+        if fixes.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(SpellOut { corrected: dawn_dict::apply_fixes(&text, &fixes), fixes: fixes.into_iter().map(|f| SpellFixOut { word: f.word, replacement: f.replacement }).collect() }))
+    })
+    .await
+    .map_err(|e| CmdError::new("engine", e))?
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct DictProgress {

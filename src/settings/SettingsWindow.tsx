@@ -13,9 +13,10 @@ import {
   ShortcutsPage,
 } from "./pages";
 import { GlossaryPage } from "./GlossaryPage";
+import { QualityPage } from "./QualityPage";
 
-type Page = "general" | "shortcuts" | "accessibility" | "files" | "packs" | "glossary" | "advanced";
-const PAGES: Page[] = ["general", "shortcuts", "accessibility", "files", "packs", "glossary", "advanced"];
+type Page = "general" | "shortcuts" | "accessibility" | "files" | "packs" | "quality" | "glossary" | "advanced";
+const PAGES: Page[] = ["general", "shortcuts", "accessibility", "files", "packs", "quality", "glossary", "advanced"];
 
 const asPage = (value: string | null): Page | undefined => PAGES.find((p) => p === value);
 
@@ -42,6 +43,7 @@ export function SettingsWindow() {
     { id: "accessibility", label: t("page.accessibility"), icon: "accessibility" },
     { id: "files", label: t("page.files"), icon: "folder" },
     { id: "packs", label: t("page.packs"), icon: "package" },
+    { id: "quality", label: t("page.quality"), icon: "pencil" },
     { id: "glossary", label: t("page.glossary"), icon: "text" },
     { id: "advanced", label: t("page.advanced"), icon: "wrench" },
   ];
@@ -64,6 +66,7 @@ export function SettingsWindow() {
         {page === "accessibility" && <AccessibilityPage />}
         {page === "files" && <FilesPage />}
         {page === "packs" && <PacksPage />}
+        {page === "quality" && <QualityPage />}
         {page === "glossary" && <GlossaryPage />}
         {page === "advanced" && <AdvancedPage />}
       </main>

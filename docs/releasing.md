@@ -2,7 +2,7 @@
 
 Releases are automated with [release-please](https://github.com/googleapis/release-please). You never edit version numbers, the changelog or tags by hand. You write commit messages with a short prefix, merge a pull request when you want a release, test a draft, and click Publish.
 
-Owl-L reaches the network in exactly two ways: **language pack downloads** (Hugging Face, on request) and the **update check** (`latest.json` on the latest GitHub release, at most once a day and when the user clicks "Check for updates"). No other code may open a connection. See "Network access" at the end.
+Owl-L reaches the network in exactly two ways: **pack downloads** (language packs and, when the user turns on Quality mode, its runtime and model; on request) and the **update check** (`latest.json` on the latest GitHub release, at most once a day and when the user clicks "Check for updates"). The only other connections are to **this computer** (`127.0.0.1`): the Quality mode runtime Owl-L starts itself, or a local Ollama. No other code may open a connection. See "Network access" at the end.
 
 ## 1. How it works
 
@@ -153,13 +153,15 @@ Run on a clean Windows user profile (or a fresh VM), using the installer from th
 7. Menu, Check for updates, and Settings, General, Check for updates: "Owl-L is up to date" while no newer release is published; with the network off, the connection message.
 8. About: version and the model attribution (OPUS-MT, Helsinki-NLP, CC-BY-4.0 / Apache-2.0) are shown.
 9. Uninstall (Settings, Apps): the question "Also delete Owl-L's settings and translation history?" appears. Answer No and check that `%AppData%\SecondDawn\owll` is still there; reinstall, uninstall again, answer Yes and check that it is gone. In both cases `%AppData%\SecondDawn\models` stays.
-10. Update test (once a second release exists): install the older version, publish the newer release, click Check for updates, "Update and restart".
+10. Quality mode and the shortcut fix: run [manual-tests-v0.4.md](manual-tests-v0.4.md) (Quality mode is off by default; with it off, the app behaves as before and `llama-server.exe` never runs).
+11. Update test (once a second release exists): install the older version, publish the newer release, click Check for updates, "Update and restart".
 
 ## 9. Network access
 
 | Code | When | What is sent |
 |---|---|---|
-| `dawn-models` downloads (`crates/dawn-models/src/download.rs` in dawn-core) | Only when the user installs a language pack | An HTTPS GET for a pack file from the pinned Hugging Face url (the catalog's `urls`). |
+| `dawn-models` downloads (`crates/dawn-models/src/download.rs` in dawn-core) | Only when the user installs a language pack, or the Quality mode runtime or model | An HTTPS GET for a pack file from the pinned url in the catalog's `urls` (Hugging Face: the `Second-Dawn-Lab` repositories; for Quality mode packs the original repository or the llama.cpp GitHub release is tried second if the mirror fails). Every file is checked against its sha256. |
+| `dawn-llm` (`crates/dawn-llm/src/client.rs` in dawn-core) | Only with Quality mode on, when a polish, rewrite or alternatives request is made, and when the Quality settings page lists the models of a local Ollama | HTTP to `127.0.0.1`, `localhost` or `[::1]` only: the `llama-server` Owl-L started on a free local port, or Ollama (`/api/tags`, `/v1/chat/completions`). `Endpoint::parse` refuses every other address before a connection is made; no proxy, no redirects. The text being translated is sent to that local process and nowhere else. |
 | `tauri-plugin-updater` (`src/updater.ts`, `src-tauri/src/updates.rs`) | At most once a day at startup, and when the user clicks "Check for updates" | An HTTPS GET for `latest.json` on GitHub. The installer is downloaded only after the user clicks "Update and restart". |
 
-Translation, OCR, history and settings never touch the network. Anything new that needs the network must be added to this table and to the README's privacy section first.
+Translation, OCR, history and settings never touch the network. Quality mode is off by default, loads nothing at app start and frees its model after an idle time. Anything new that needs the network must be added to this table and to the README's privacy section first.

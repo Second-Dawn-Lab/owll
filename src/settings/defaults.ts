@@ -56,6 +56,22 @@ export interface Settings {
   /** The size the user gave the caption bar (logical pixels, 0 = automatic). */
   liveBarWidth: number;
   liveBarHeight: number;
+  /** Quality mode (an optional local language model). */
+  qualityMode: "off" | "builtin" | "ollama";
+  /** The downloaded model in use (a catalog pack id), "" = the small one. */
+  qualityModel: string;
+  ollamaModel: string;
+  ollamaEndpoint: string;
+  /** Minutes without use after which the model is freed from memory. */
+  qualityIdleMinutes: number;
+  /** Show the fast translation instead of the polished one. */
+  qualityShowFast: boolean;
+  tone: "automatic" | "formal" | "informal";
+  /** Polish live captions too (plain subtitles: Calm speed only; meeting captions: finished utterances). */
+  livePolish: boolean;
+  /** Meeting captions (a speaker name above growing text): detected automatically, always, or never. */
+  liveMeeting: "auto" | "on" | "off";
+  filesPolish: boolean;
 }
 
 /** Used until the backend answers, and by the browser mock. Keep in sync with Rust. */
@@ -99,4 +115,14 @@ export const defaultSettings: Settings = {
   liveSaveChoice: "ask",
   liveBarWidth: 0,
   liveBarHeight: 0,
+  qualityMode: "off",
+  qualityModel: "",
+  ollamaModel: "",
+  ollamaEndpoint: "127.0.0.1:11434",
+  qualityIdleMinutes: 5,
+  qualityShowFast: false,
+  tone: "automatic",
+  livePolish: false,
+  liveMeeting: "auto",
+  filesPolish: false,
 };

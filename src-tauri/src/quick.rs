@@ -130,6 +130,28 @@ pub struct Quick {
     /// Count and time of user-made moves and resizes.
     geometry_events: std::sync::atomic::AtomicU64,
     geometry_at: Mutex<Option<Instant>>,
+    /// When each shortcut last fired, from the keyboard hook or from the page (see `claim_fire`).
+    fired_at: Mutex<std::collections::HashMap<String, Instant>>,
+}
+
+/// The keyboard hook and the page both see a key press inside Owl-L's own windows; the later of the two is dropped.
+const FIRE_DEDUPE: Duration = Duration::from_millis(700);
+
+/// Should a shortcut that fires at `now` run, given when the same shortcut last ran?
+pub fn fire_is_new(last: Option<Instant>, now: Instant) -> bool {
+    last.map_or(true, |t| now.saturating_duration_since(t) >= FIRE_DEDUPE)
+}
+
+impl Quick {
+    /// True for the first of two reports of the same key press (hook and page); false for the echo.
+    pub fn claim_fire(&self, name: &str, now: Instant) -> bool {
+        let mut fired = self.fired_at.lock().unwrap();
+        if !fire_is_new(fired.get(name).copied(), now) {
+            return false;
+        }
+        fired.insert(name.to_string(), now);
+        true
+    }
 }
 
 impl Quick {
@@ -149,6 +171,7 @@ impl Quick {
             placed_at: Mutex::new(None),
             geometry_events: std::sync::atomic::AtomicU64::new(0),
             geometry_at: Mutex::new(None),
+            fired_at: Mutex::new(std::collections::HashMap::new()),
         }
     }
 }
@@ -308,6 +331,10 @@ fn on_hotkey(app: &AppHandle, name: &str, outcome: Outcome) {
     // The settings window shows that a shortcut was seen: a way to try a new shortcut right there.
     if outcome == Outcome::Fired {
         let _ = app.emit("shortcut-detected", name);
+        // The page of an Owl-L window may have reported the same key press already.
+        if !app.state::<Quick>().claim_fire(name, Instant::now()) {
+            return;
+        }
     }
     if name == CAPTURE {
         if outcome == Outcome::Fired {
@@ -330,6 +357,33 @@ fn on_hotkey(app: &AppHandle, name: &str, outcome: Outcome) {
         Outcome::Fired => trigger(app),
         Outcome::Nothing => {}
     }
+}
+
+/// A shortcut seen by the page of an Owl-L window (the hook sees it too; `claim_fire` keeps only one). `text` is the
+/// selection in the page, used by quick access, which ignores key presses inside Owl-L when the hook reports them.
+#[tauri::command]
+pub fn shortcut_fired(app: AppHandle, name: String, text: Option<String>) {
+    if !app.state::<Quick>().claim_fire(&name, Instant::now()) {
+        return;
+    }
+    std::thread::spawn(move || match name.as_str() {
+        CAPTURE => crate::capture::start_from_shortcut(&app),
+        LIVE => crate::live::toggle(&app),
+        TRANSLATE => {
+            let settings = app.state::<AppState>().settings.lock().unwrap().clone();
+            let selection = match text.filter(|t| !t.trim().is_empty()) {
+                Some(t) => Selection::Text(t),
+                None => Selection::NoSelection,
+            };
+            let Decision::Open(text) = decide(selection, settings.ignore_quick_access_without_selection) else { return };
+            if settings.quick_access == "app" {
+                open_main(&app, text);
+            } else {
+                open_popup(&app, QuickRequest { text, app: None, can_replace: false, kind: "quick", problem: None }, None);
+            }
+        }
+        _ => {}
+    });
 }
 
 fn trigger(app: &AppHandle) {
@@ -690,6 +744,17 @@ mod tests {
         assert_eq!(restore_text(prev(), 7, 7), Some("old".into()));
         assert_eq!(restore_text(prev(), 7, 8), None, "the user copied something else meanwhile");
         assert_eq!(restore_text(None, 7, 7), None, "there was nothing to restore");
+    }
+
+    #[test]
+    fn a_key_press_seen_by_the_hook_and_the_page_runs_once() {
+        let q = Quick::new();
+        let t0 = Instant::now();
+        assert!(q.claim_fire(LIVE, t0));
+        assert!(!q.claim_fire(LIVE, t0 + Duration::from_millis(30)), "the echo is dropped");
+        assert!(q.claim_fire(CAPTURE, t0 + Duration::from_millis(30)), "another shortcut is independent");
+        assert!(q.claim_fire(LIVE, t0 + Duration::from_millis(900)), "a later press runs again");
+        assert!(fire_is_new(None, t0));
     }
 
     #[test]

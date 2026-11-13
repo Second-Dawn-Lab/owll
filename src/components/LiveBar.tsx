@@ -5,7 +5,7 @@ import { languageName, useT } from "../i18n";
 import { ipc, type LiveLine, type LiveStatus } from "../ipc";
 import { settingsStore } from "../settings/store";
 import { LanguagePicker } from "./LanguagePicker";
-import { addLines, choiceToRemember, clock, decideSave, timeRange, transcriptText, type Caption } from "./liveLines";
+import { addLines, choiceToRemember, clock, decideSave, speakerPrefix, timeRange, transcriptText, upsertUtterance, type Caption } from "./liveLines";
 import { atBottom, endOf, initialScroll, jump, onLines, onScroll, showJump, type ScrollState } from "./scrollModel";
 import { usePacks } from "./usePacks";
 
@@ -46,7 +46,7 @@ export function LiveBar() {
       const choice = choiceToRemember(answer, rememberIt);
       if (choice) await ipc.liveSetSaveChoice(choice).catch(() => undefined);
       if (answer) {
-        const kept = await ipc.liveSaveSession(from || source, to || target, began, all.map((c) => ({ t: c.at, original: c.original, translation: c.translation }))).catch(() => false);
+        const kept = await ipc.liveSaveSession(from || source, to || target, began, all.map((c) => ({ t: c.at, original: `${speakerPrefix(c.speaker)}${c.original}`, translation: `${speakerPrefix(c.speaker)}${c.translation}` }))).catch(() => false);
         setNote(kept ? t("live.saved") : t("live.notSaved"));
         setTimeout(closeBar, 1400);
       } else {
@@ -70,6 +70,14 @@ export function LiveBar() {
         live.current.to = e.to;
         setCaptions((list) => addLines(list, e.lines as LiveLine[], e.replaceLast));
         setScroll((s) => onLines(s, e.replaceLast ? Math.max(0, e.lines.length - 1) : e.lines.length));
+        setStatus((s) => (s.state === "running" || s.state === "no_text" ? s : { state: "running", languages: [], message: "" }));
+      }),
+      ipc.onLiveUtterance((u) => {
+        live.current.from = u.from;
+        live.current.to = u.to;
+        const known = live.current.captions.some((c) => c.utterance === u.id);
+        setCaptions((list) => upsertUtterance(list, u));
+        if (!known) setScroll((s) => onLines(s, 1));
         setStatus((s) => (s.state === "running" || s.state === "no_text" ? s : { state: "running", languages: [], message: "" }));
       }),
       ipc.onLiveStatus((s) => {
@@ -213,8 +221,9 @@ export function LiveBar() {
               <p className="livebar__hint">{paused ? t("live.paused") : t("live.waiting")}</p>
             ))}
           {captions.map((c) => (
-            <div key={c.id} className="livebar__line" dir="auto">
+            <div key={c.id} className={`livebar__line${c.growing ? " livebar__line--growing" : ""}`} dir="auto">
               <span className="livebar__time">{clock(c.at, locale)}</span>
+              {c.speaker && <span className="livebar__speaker">{c.speaker}</span>}
               <div className="livebar__translation">{c.translation}</div>
               {settings.liveShowOriginal && <div className="livebar__original">{c.original}</div>}
             </div>

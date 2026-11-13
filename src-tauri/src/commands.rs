@@ -143,6 +143,8 @@ pub struct SegmentOut {
     end: usize,
     /// The user picked this sentence from the alternatives.
     pinned: bool,
+    /// The fast engine could not translate this sentence cleanly (the note "Couldn't translate this sentence cleanly").
+    unclean: bool,
 }
 
 impl From<dawn_translate::Translation> for TranslateOut {
@@ -150,7 +152,7 @@ impl From<dawn_translate::Translation> for TranslateOut {
         Self {
             text: t.text,
             pivoted: t.pivoted,
-            segments: t.segments.into_iter().map(|s| SegmentOut { source: s.source, input: s.input, target: s.target, start: s.start, end: s.end, pinned: s.pinned }).collect(),
+            segments: t.segments.into_iter().map(|s| SegmentOut { source: s.source, input: s.input, target: s.target, start: s.start, end: s.end, pinned: s.pinned, unclean: s.unclean }).collect(),
             glossary_hits: t.glossary_hits,
             glossary_terms: t.glossary_terms.into_iter().map(|h| TermOut { start: h.start, end: h.end, source: h.source, target: h.target }).collect(),
         }
@@ -159,7 +161,17 @@ impl From<dawn_translate::Translation> for TranslateOut {
 
 /// Up to three whole-sentence alternatives for the translation of `input`, different from `current`.
 #[tauri::command]
-pub async fn sentence_alternatives(state: State<'_, AppState>, from: String, to: String, source: String, input: String, current: String) -> CmdResult<Vec<String>> {
+pub async fn sentence_alternatives(app: AppHandle, state: State<'_, AppState>, from: String, to: String, source: String, input: String, current: String) -> CmdResult<Vec<String>> {
+    // Quality mode: the language model makes them, in the tone and with the glossary rules of the polished sentence
+    // (the translation model's sentences would be worse than the polished one: lowercase, typos kept, no tone). When
+    // nothing good comes back the list is empty and hidden.
+    if state.settings.lock().unwrap().quality_mode != "off" {
+        let (app, f, t, s, c) = (app.clone(), from.clone(), to.clone(), source.clone(), current.clone());
+        let list = tauri::async_runtime::spawn_blocking(move || crate::quality::model_sentence_alternatives(&app, &f, &t, &s, &c)).await.ok().flatten();
+        if let Some(list) = list {
+            return Ok(list);
+        }
+    }
     let engine = state.engine.clone();
     let catalog = state.catalog.clone();
     tauri::async_runtime::spawn_blocking(move || engine.sentence_alternatives(&from, &to, &source, &input, &current, 3))
@@ -170,13 +182,13 @@ pub async fn sentence_alternatives(state: State<'_, AppState>, from: String, to:
 
 #[derive(Serialize)]
 pub struct AlternativeOut {
-    word: String,
+    pub(crate) word: String,
     /// The whole sentence when this word is chosen.
-    text: String,
+    pub(crate) text: String,
     /// How the sentence continues from the word ("erstaunt. ...").
-    preview: String,
+    pub(crate) preview: String,
     /// The word that stands there now.
-    current: bool,
+    pub(crate) current: bool,
 }
 
 /// Alternatives for the word that starts at UTF-16 offset `word_start` of `sentence` (a segment's `target`;
@@ -184,7 +196,15 @@ pub struct AlternativeOut {
 /// so it runs off the UI thread.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub async fn alternatives(state: State<'_, AppState>, from: String, to: String, source: String, input: String, sentence: String, word_start: usize, current: String) -> CmdResult<Vec<AlternativeOut>> {
+pub async fn alternatives(app: AppHandle, state: State<'_, AppState>, from: String, to: String, source: String, input: String, sentence: String, word_start: usize, current: String) -> CmdResult<Vec<AlternativeOut>> {
+    // Quality mode: the language model suggests the words (fewer odd ones); any problem falls back to the translation model.
+    if state.settings.lock().unwrap().quality_mode != "off" {
+        let (app, f, t, s, sen, cur) = (app.clone(), from.clone(), to.clone(), source.clone(), sentence.clone(), current.clone());
+        let from_model = tauri::async_runtime::spawn_blocking(move || crate::quality::model_alternatives(&app, &f, &t, &s, &sen, word_start, &cur)).await.ok().flatten();
+        if let Some(list) = from_model {
+            return Ok(list);
+        }
+    }
     let engine = state.engine.clone();
     let catalog = state.catalog.clone();
     let started = Instant::now();

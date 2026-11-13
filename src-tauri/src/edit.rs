@@ -219,7 +219,7 @@ pub fn edit_start(app: AppHandle, state: State<'_, AppState>, job: State<'_, Doc
     std::thread::spawn(move || {
         let run = || -> Result<(), (Option<dawn_translate::TranslateError>, dawn_docs::DocError)> {
             let session = Session::open(Path::new(&path)).map_err(|e| (None, e))?;
-            let mut translator = EngineTranslator::new(engine, from.clone(), to.clone(), cancel);
+            let mut translator = EngineTranslator::new(engine, from.clone(), to.clone(), cancel).with_polish(&app);
             let progress_app = app.clone();
             let translated = session
                 .translate(&mut translator, &mut |p: Progress| {

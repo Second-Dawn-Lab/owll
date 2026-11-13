@@ -333,6 +333,25 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
     case "quick_hide":
     case "quick_set_pinned":
     case "quick_open_in_main":
+    case "quality_status":
+      return out({ runtime: null, models: [], selectedModel: "", requestedModel: "", writing: null, ollama: { running: false, models: [] }, memory: null, loaded: false, state: "off", missing: "", ready: false, progress: [] });
+    case "spell_suggest":
+      return out(null);
+    case "quality_install":
+    case "quality_cancel":
+    case "quality_remove":
+    case "quality_unload":
+    case "quality_polish_cancel":
+      return out(undefined);
+    case "quality_polish_text":
+      return out(a.current);
+    case "quality_polish_cancel_unused":
+      return out(undefined);
+    case "quality_polish":
+      return out({ text: a.text, segments: a.segments, glossaryTerms: [], polished: 0, kept: 0 });
+    case "quality_write":
+      return out({ pieces: [{ kind: "same", text: a.text }], text: a.text, model: "" });
+    case "shortcut_fired":
     case "quick_block_app":
     case "trace":
     case "quit_app":

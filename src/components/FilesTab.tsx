@@ -1,5 +1,5 @@
 import { useSettings } from "@seconddawn/settings";
-import { Button, Icon, ProgressBar } from "@seconddawn/ui";
+import { Button, Icon, ProgressBar, Checkbox } from "@seconddawn/ui";
 import { useEffect, useRef, useState } from "react";
 import { languageName, useT } from "../i18n";
 import { ipc, IpcError } from "../ipc";
@@ -10,6 +10,8 @@ import { docFailureKey, DOC_EXTENSIONS } from "./docFiles";
 import { formatFileSize, pluralForm } from "./fileSize";
 import { DraftsList } from "./DraftsList";
 import { GlossaryPicker } from "./GlossaryPicker";
+import { TonePicker } from "./TonePicker";
+import { useQuality } from "./useQuality";
 import { LanguagePicker } from "./LanguagePicker";
 import { decidePdf } from "./pdfChoice";
 import { usePacks } from "./usePacks";
@@ -26,6 +28,12 @@ function iconFor(kind: BatchItem["kind"]): "doc" | "sheet" | "slides" | "pdf" {
 export function FilesTab({ incoming, onEdit, draftsKey }: { incoming: { paths: string[]; n: number } | null; onEdit: (draftId: string) => void; draftsKey: number }) {
   const { t, locale } = useT();
   const { settings, patch } = useSettings(settingsStore);
+  const quality = useQuality();
+  const [polishStopped, setPolishStopped] = useState<string | null>(null);
+  useEffect(() => {
+    const off = ipc.onDocPolishStopped(setPolishStopped);
+    return () => void off.then((fn) => fn());
+  }, []);
   const packs = usePacks();
   const [batch, setBatch] = useState<Batch>(batchOps.emptyBatch);
   const batchRef = useRef(batch);
@@ -185,8 +193,19 @@ export function FilesTab({ incoming, onEdit, draftsKey }: { incoming: { paths: s
       <div className="langbar">
         <span>{t("files.translateInto")}</span>
         <LanguagePicker label={t("lang.target")} value={target} languages={usable} onChange={(code) => void patch({ filesTargetLanguage: code })} />
+        <TonePicker language={target} />
         <GlossaryPicker />
+        <span className="files__polish" title={quality.ready ? t("files.polishHint") : t("files.polishNeeds")}>
+          <Checkbox checked={quality.ready && settings.filesPolish} disabled={!quality.ready} onChange={(v) => void patch({ filesPolish: v })}>
+            {t("files.polish")}
+          </Checkbox>
+        </span>
       </div>
+      {polishStopped && (
+        <p className="files__hint" role="status">
+          {polishStopped}
+        </p>
+      )}
 
       <ul className="files__list" aria-label={t("tab.files")}>
         {batch.items.map((item) => {
