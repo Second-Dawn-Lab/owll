@@ -122,23 +122,38 @@ To withdraw a bad release before or after publishing, delete the release or turn
 
 ## 7. Windows code signing (SmartScreen)
 
-Not implemented yet. The updater signature above protects the update channel; it is **not** a Windows code-signing certificate. Without one, Windows SmartScreen shows "Windows protected your PC / Unknown publisher" on a fresh download until the file earns reputation. The README tells users how to continue ("More info", then "Run anyway").
+The updater signature above protects the update channel; it is **not** a Windows code-signing certificate. Without one, Windows SmartScreen shows "Windows protected your PC / Unknown publisher" on a fresh download until the file earns reputation. The README tells users how to continue ("More info", then "Run anyway").
 
 | Option | Cost | What it takes | Notes |
 |---|---|---|---|
 | **SignPath Foundation** | Free for open-source projects | An application, review by SignPath; the project must be public and OSI-licensed, with a code signing policy and no malware or closed-source parts. Signing runs in CI through their GitHub Action; the certificate is issued to SignPath Foundation, so the publisher shows as "SignPath Foundation". | Best fit. Reputation still builds up over time. |
-| **Azure Trusted Signing** | Paid (about 10 USD a month) | A verified identity (individual or organization, identity validation can take days or weeks and is limited to some countries), an Azure subscription. | Easy GitHub integration, publisher shows your verified name. |
-| **Unsigned** | Free | Nothing | Users see the SmartScreen warning at every new version for a long time. Acceptable for a first, small release. |
+| **Azure Trusted Signing** | Paid (about 10 USD a month) | A verified identity, an Azure subscription. | Easy GitHub integration, publisher shows your verified name. |
+| **Unsigned** | Free | Nothing | Users see the SmartScreen warning for a long time. Acceptable for a first, small release. |
 
-**Recommendation for a free open-source project: apply to SignPath Foundation**, and ship unsigned in the meantime. What you need to apply:
+We apply to SignPath Foundation. Ready in the repository: [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) (linked from the README), [SECURITY.md](../SECURITY.md), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md), and the text to paste into the application form: [signpath-application.md](signpath-application.md). Check SignPath Foundation's current conditions on their website before applying; they may have changed.
 
-- the public GitHub repository URL (`Second-Dawn-Lab/owll`) with the MIT `LICENSE` file, and a short description of what Owl-L does;
-- a README that states the project's purpose, how to build it and (their requirement) a **code signing policy** page in the repository (who may trigger a signing run, that only CI-built artifacts are signed, no telemetry/malware);
-- the project's homepage or download page, a maintainer contact e-mail, and the maintainers' names;
-- a build that runs in GitHub Actions from the public source (the `build` job already does), so the signed file can be traced to a commit;
-- an agreement that the project is not tied to closed-source or proprietary components in the signed file.
+### Turning SignPath on (after the application is approved)
 
-Check SignPath Foundation's current conditions on their website before applying; they may have changed.
+The signing steps are already in `.github/workflows/release.yml` but do nothing while the repository variable `SIGNPATH_ENABLED` is not `true`. With it off, the release is built exactly as before (unsigned installer, updater signature made by `tauri build`).
+
+1. In SignPath: you get an organization, create (or are given) a project for Owl-L, and a signing policy for release signing with **manual approval** (you are the Approver). Create an **artifact configuration** for each of the two things we send: one for a zip that contains `owll.exe` (sign that file with the Authenticode method) and one that contains the NSIS installer `*-setup.exe`. Both come from a GitHub Actions artifact (the workflow uploads them with `actions/upload-artifact`), and the trusted build system must be linked to GitHub (SignPath asks for this; it verifies that the artifact was built by the workflow of this repository). If your SignPath project has one artifact configuration only, you can use two projects or an artifact configuration that signs `*.exe` files in the zip, and then set the slugs accordingly.
+2. In SignPath create an **API token** for a CI user that may submit requests to that policy. Add it as the GitHub Actions secret **`SIGNPATH_API_TOKEN`** in the `owll` repository (never in a file or a chat).
+3. In `.github/workflows/release.yml` replace the three placeholders (each appears twice, once for owll.exe and once for the installer; if you use different projects or policies for the two, set them separately):
+   - `REPLACE_WITH_SIGNPATH_ORGANIZATION_ID` - the organization id (a GUID, in the SignPath URL)
+   - `REPLACE_WITH_SIGNPATH_PROJECT_SLUG` - the project slug
+   - `REPLACE_WITH_SIGNPATH_SIGNING_POLICY_SLUG` - the signing policy slug (for example `release-signing`)
+4. In the `owll` repository set the **variable** (Settings, Secrets and variables, Actions, Variables tab) `SIGNPATH_ENABLED` to `true`. Set it back to `false` (or delete it) to release unsigned again.
+5. Release as usual. The `build` job now pauses twice for your approval in SignPath (once for `owll.exe`, once for the installer; you get an e-mail), then continues. If the placeholders or the secret are missing it stops at once with a message that says so.
+
+What the workflow does when enabled, in this order (the order matters):
+
+1. `pnpm tauri build --no-bundle` builds `owll.exe` only.
+2. `owll.exe` is signed by SignPath, and the signed file replaces the built one.
+3. `pnpm tauri bundle --bundles nsis` builds the installer around the signed `owll.exe`, without the updater config (so no `.sig` yet).
+4. The installer is signed by SignPath.
+5. `pnpm tauri signer sign` makes the updater signature (`.sig`) **of the signed installer**. The `.sig` covers the exact bytes of the file users download, so it must come last; `latest.json` and the upload follow unchanged.
+
+Before the first signed release, try it on a throwaway tag via "Run workflow" and check: the installer's properties (Digital Signatures tab) show SignPath Foundation, the installed `owll.exe` is signed too, and the in-app update from the previous version still works (the updater signature must verify). Two points were written from SignPath's and Tauri's documentation and not yet run, so check them in that first run: the folder layout of the signed zip that the SignPath action unpacks into `signed-exe` / `signed-installer`, and the artifact configuration slugs.
 
 ## 8. Manual test list for a release
 

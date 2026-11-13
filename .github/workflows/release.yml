@@ -129,11 +129,119 @@ jobs:
       # switches it on. A file path (relative to working-directory) is used because PowerShell, the default
       # shell on Windows runners, strips the quotes from inline JSON.
       - name: Build the installer and sign the updater artifacts
+        if: ${{ vars.SIGNPATH_ENABLED != 'true' }}
         working-directory: owll
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --bundles nsis --config src-tauri/tauri.release.conf.json
+
+      # ---------------------------------------------------------------------------------------------------------
+      # Windows code signing with SignPath (free for open source: SignPath Foundation). NOT ENABLED YET: the steps
+      # below run only when the repository variable SIGNPATH_ENABLED is "true" (Settings > Secrets and variables >
+      # Actions > Variables). Setup and the order of events: docs/releasing.md, section 7.
+      #
+      # The order matters. The installer contains owll.exe, so owll.exe is signed first and the installer is built
+      # around the signed copy. The updater signature (.sig) is a signature of the installer file's bytes, so it is
+      # made last, after SignPath has signed the installer. That is why the build is split here: `tauri build
+      # --no-bundle`, then `tauri bundle` without the updater config, then `tauri signer sign`.
+      # Every SignPath request waits for a manual approval (see docs/CODE_SIGNING_POLICY.md).
+      # ---------------------------------------------------------------------------------------------------------
+      - name: Check the SignPath settings
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        shell: bash
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if [ -z "$SIGNPATH_API_TOKEN" ]; then
+            echo "::error title=SignPath token missing::Add the repository secret SIGNPATH_API_TOKEN, or set the variable SIGNPATH_ENABLED to false. See docs/releasing.md."
+            exit 1
+          fi
+          # The pattern is written in two pieces so that this line itself does not match.
+          if grep -q "REPLACE_WITH_SIGN""PATH" owll/.github/workflows/release.yml; then
+            echo "::error title=SignPath placeholders::The organization id, project slug and signing policy slug in .github/workflows/release.yml are still placeholders. See docs/releasing.md."
+            exit 1
+          fi
+
+      - name: Build owll.exe (no installer yet)
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        working-directory: owll
+        run: pnpm tauri build --no-bundle
+
+      - name: Upload owll.exe for signing
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        id: upload-exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: owll-exe-unsigned
+          path: owll/target/release/owll.exe
+          retention-days: 7
+
+      - name: Sign owll.exe with SignPath
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: REPLACE_WITH_SIGNPATH_ORGANIZATION_ID
+          project-slug: REPLACE_WITH_SIGNPATH_PROJECT_SLUG
+          signing-policy-slug: REPLACE_WITH_SIGNPATH_SIGNING_POLICY_SLUG
+          github-artifact-id: ${{ steps.upload-exe.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-exe
+
+      - name: Use the signed owll.exe and build the installer around it
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        shell: bash
+        working-directory: owll
+        run: |
+          signed=$(find ../signed-exe -name owll.exe | head -n1)
+          test -f "$signed" || { echo "::error::SignPath returned no owll.exe"; exit 1; }
+          cp "$signed" target/release/owll.exe
+          # No updater config here: the .sig must be made after the installer is signed.
+          pnpm tauri bundle --bundles nsis
+
+      - name: Upload the installer for signing
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        id: upload-installer
+        shell: bash
+        working-directory: owll
+        run: |
+          installer=$(ls target/release/bundle/nsis/*-setup.exe | head -n1)
+          mkdir -p unsigned-installer && cp "$installer" unsigned-installer/
+          echo "installer=$installer" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        id: upload-installer-artifact
+        with:
+          name: owll-installer-unsigned
+          path: owll/unsigned-installer/*-setup.exe
+          retention-days: 7
+
+      - name: Sign the installer with SignPath
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: REPLACE_WITH_SIGNPATH_ORGANIZATION_ID
+          project-slug: REPLACE_WITH_SIGNPATH_PROJECT_SLUG
+          signing-policy-slug: REPLACE_WITH_SIGNPATH_SIGNING_POLICY_SLUG
+          github-artifact-id: ${{ steps.upload-installer-artifact.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-installer
+
+      - name: Use the signed installer and make the updater signature
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        shell: bash
+        working-directory: owll
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          installer="${{ steps.upload-installer.outputs.installer }}"
+          signed=$(find ../signed-installer -name '*-setup.exe' | head -n1)
+          test -f "$signed" || { echo "::error::SignPath returned no installer"; exit 1; }
+          cp "$signed" "$installer"
+          pnpm tauri signer sign "$installer"
 
       - name: Write latest.json
         shell: bash
