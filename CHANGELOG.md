@@ -3,6 +3,13 @@
 All notable changes to Owl-L. The newest version is first. The text of a version's section is used
 as the release notes and shown in the in-app update notice.
 
+## [0.4.0](https://github.com/Second-Dawn-Lab/owll/compare/v0.3.0...v0.4.0) (2026-11-13)
+
+
+### Features
+
+* Quality mode (local AI), Write tab and meeting captions ([747057a](https://github.com/Second-Dawn-Lab/owll/commit/747057a6538305fd35a224c5a6ab6b3c009980dd))
+
 ## [0.3.0](https://github.com/Second-Dawn-Lab/owll/compare/v0.2.2...v0.3.0) (2026-10-31)
 
 
