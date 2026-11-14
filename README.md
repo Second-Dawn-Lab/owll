@@ -148,7 +148,7 @@ Windows **Settings, Apps, Installed apps**, find **Owl-L**, **Uninstall**. The u
 
 **Is it really offline?** Yes, for translating. The only times Owl-L uses the internet are the downloads you ask for and a once-a-day update check, listed in the [privacy table](#privacy-and-offline-use). You can disconnect the computer after the downloads and keep translating.
 
-**How big are the downloads?** The installer is small. Each language pack is about 125 to 290 MB. Quality mode is optional: 25 MB for the runtime plus 1.1 GB for the default model (2.5 GB for the optional larger one). Dictionaries are about 9 MB each.
+**How big are the downloads?** The installer is small. Each language pack is about 125 to 290 MB. Quality mode is optional: 25 MB for the runtime plus 1.1 GB for the default model (2.5 GB for the optional larger one). Dictionaries are about 1 to 15 MB each.
 
 **Which computers does it run on?** 64-bit Windows 10 and 11. No graphics card is needed. Quality mode was tested on a 6-core desktop CPU from 2019 with 16 GB of memory; a polished sentence takes about one to two seconds there.
 
