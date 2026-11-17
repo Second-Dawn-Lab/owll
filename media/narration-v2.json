@@ -1,0 +1,17 @@
+{
+  "_help": "The voice-over of promo v2 (voice af_heart). 'text' is what is spoken (numbers and keys spelled the way the voice should say them), 'caption' is what the subtitle shows (default: text). 'short' is the line used in the 9:16 and 1:1 videos (30 s at most). Edit and run: make-demo.ps1 -Steps v2.",
+  "voice": "af_heart",
+  "speed": 1.04,
+  "lang": "en-us",
+  "scenes": {
+    "where":   {"text": "Every time you paste text into an online translator, it leaves your computer.", "short": "Online translators send your text away."},
+    "offline": {"text": "Meet Owl-L. It translates right on your PC. No internet, no account, no subscription.", "short": "Owl-L translates on your PC. No internet needed."},
+    "meeting": {"text": "In a meeting in another language? Turn on captions, and Owl-L translates them live, speaker by speaker.", "short": "Translate live meeting captions."},
+    "capture": {"text": "Can't copy the text? Just draw a box: images, videos, games.", "short": "Or any text on your screen."},
+    "popup":   {"text": "Select text anywhere and press Control C twice.", "caption": "Select text anywhere and press Ctrl+C twice."},
+    "docs":    {"text": "Translate Word, PowerPoint and Excel files, and keep the layout."},
+    "write":   {"text": "Optional local AI polishes translations and fixes your grammar, still on your PC."},
+    "compare": {"text": "Your words stay yours.", "short": "Your words stay yours."},
+    "outro":   {"text": "Owl-L. Free and open source. Download it on GitHub.", "short": "Owl-L. Free and open source."}
+  }
+}

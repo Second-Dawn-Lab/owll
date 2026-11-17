@@ -1,0 +1,649 @@
+{
+ "_help": "Edit text, durations and zoom here, then run: make-demo.ps1 render. 'ranges' = [from, to, speed] stretches of the recorded clip (seconds), played one after the other; a high speed skips over waiting (the model thinking). 'ranges_short' is the same for the 9:16 and 1:1 videos ('dur_short': false leaves a scene out there). 'focus' = camera keyframes: t = seconds into the scene (output time), rect = [left, top, right, bottom] in recorded-screen pixels (2400x1350) or 'mark:<name>' (rectangles noted while recording: clips/<scene>.json), 'pad' = margin factor.",
+ "crossfade": 0.25,
+ "scenes": [
+  {
+   "id": "hook",
+   "type": "card",
+   "dur": 3.2,
+   "dur_short": 2.6,
+   "lines": [
+    {
+     "text": "A translator that runs\n100% offline",
+     "size": 0.072
+    },
+    {
+     "text": "Free & open source",
+     "size": 0.042,
+     "bold": false,
+     "color": [
+      225,
+      215,
+      255
+     ]
+    }
+   ]
+  },
+  {
+   "id": "text",
+   "type": "clip",
+   "clip": "02-text",
+   "ranges": [
+    [
+     0.9,
+     5.0,
+     2.4
+    ],
+    [
+     5.0,
+     6.2,
+     1.0
+    ],
+    [
+     6.2,
+     15.9,
+     9.0
+    ],
+    [
+     15.9,
+     17.4,
+     1.0
+    ]
+   ],
+   "ranges_short": [
+    [
+     1.5,
+     5.0,
+     4.0
+    ],
+    [
+     5.0,
+     5.9,
+     1.0
+    ],
+    [
+     5.9,
+     15.9,
+     12.0
+    ],
+    [
+     15.9,
+     17.0,
+     1.0
+    ]
+   ],
+   "caption": "Type, and it translates as you go",
+   "focus": [
+    {
+     "t": 0,
+     "mark": "mark:window",
+     "pad": 1.3
+    },
+    {
+     "t": 2.2,
+     "mark": "mark:window",
+     "pad": 1.18
+    }
+   ]
+  },
+  {
+   "id": "meeting",
+   "type": "clip",
+   "clip": "05b-meeting",
+   "ranges": [
+    [
+     3.8,
+     5.5,
+     1.0
+    ],
+    [
+     5.5,
+     13.0,
+     1.4
+    ],
+    [
+     13.0,
+     26.5,
+     6.0
+    ]
+   ],
+   "ranges_short": [
+    [
+     4.2,
+     5.5,
+     1.0
+    ],
+    [
+     5.5,
+     15.0,
+     2.2
+    ]
+   ],
+   "min_bars": 5,
+   "min_bars_short": 3,
+   "caption": "Translate live meeting captions",
+   "caption2": "Works with the captions of your call app",
+   "focus": [
+    {
+     "t": 0,
+     "rect": [
+      300,
+      90,
+      1436,
+      1181
+     ],
+     "pad": 1.05,
+     "pad9": 1.0
+    },
+    {
+     "t": 2.8,
+     "rect": [
+      300,
+      560,
+      1436,
+      1181
+     ],
+     "pad": 1.1,
+     "pad9": 1.0
+    }
+   ]
+  },
+  {
+   "id": "popup",
+   "type": "clip",
+   "clip": "03-popup",
+   "ranges": [
+    [
+     2.2,
+     5.2,
+     1.0
+    ],
+    [
+     5.2,
+     11.7,
+     10.0
+    ],
+    [
+     11.7,
+     13.2,
+     1.0
+    ]
+   ],
+   "ranges_short": [
+    [
+     3.0,
+     5.2,
+     1.3
+    ],
+    [
+     5.2,
+     11.7,
+     12.0
+    ],
+    [
+     11.7,
+     12.7,
+     1.0
+    ]
+   ],
+   "caption": "Select text in any app, press Ctrl+C twice",
+   "focus": [
+    {
+     "t": 0,
+     "mark": "mark:window",
+     "pad": 1.25
+    },
+    {
+     "t": 2.4,
+     "rect": [
+      300,
+      260,
+      1300,
+      760
+     ],
+     "pad": 1.3
+    }
+   ]
+  },
+  {
+   "id": "capture",
+   "type": "clip",
+   "clip": "04-capture",
+   "ranges": [
+    [
+     2.0,
+     4.8,
+     1.0
+    ],
+    [
+     4.8,
+     5.6,
+     1.0
+    ],
+    [
+     5.6,
+     12.1,
+     10.0
+    ],
+    [
+     12.1,
+     13.2,
+     1.0
+    ]
+   ],
+   "ranges_short": [
+    [
+     3.0,
+     4.8,
+     1.3
+    ],
+    [
+     4.8,
+     5.4,
+     1.0
+    ],
+    [
+     5.4,
+     12.1,
+     11.0
+    ],
+    [
+     12.1,
+     13.0,
+     1.0
+    ]
+   ],
+   "caption": "Translate any text on screen: Ctrl+Shift+O",
+   "focus": [
+    {
+     "t": 0,
+     "rect": [
+      100,
+      140,
+      2400,
+      1000
+     ],
+     "rect9": [
+      120,
+      190,
+      1100,
+      830
+     ],
+     "pad9": 1.08
+    },
+    {
+     "t": 2.4,
+     "rect": [
+      100,
+      140,
+      2400,
+      1000
+     ],
+     "rect9": [
+      120,
+      190,
+      1100,
+      830
+     ],
+     "pad9": 1.08
+    },
+    {
+     "t": 3.6,
+     "mark": "mark:result",
+     "pad": 1.25
+    }
+   ]
+  },
+  {
+   "id": "live",
+   "type": "clip",
+   "clip": "05-live",
+   "ranges": [
+    [
+     3.4,
+     5.6,
+     1.0
+    ],
+    [
+     5.6,
+     16.6,
+     3.0
+    ]
+   ],
+   "ranges_short": [
+    [
+     3.6,
+     5.6,
+     1.3
+    ],
+    [
+     5.6,
+     14.6,
+     3.3
+    ]
+   ],
+   "caption": "Live captions for videos: Ctrl+Shift+L",
+   "focus": [
+    {
+     "t": 0,
+     "rect": [
+      200,
+      140,
+      1280,
+      910
+     ],
+     "pad": 1.1,
+     "pad9": 1.0,
+     "rect9": [
+      200,
+      150,
+      1290,
+      900
+     ]
+    },
+    {
+     "t": 2.2,
+     "rect": [
+      200,
+      200,
+      1280,
+      910
+     ],
+     "pad": 1.1,
+     "pad9": 1.0,
+     "rect9": [
+      200,
+      330,
+      1290,
+      900
+     ]
+    }
+   ],
+   "caption_pos": "top",
+   "dur_short": false
+  },
+  {
+   "id": "docs",
+   "type": "clip",
+   "clip": "06-docs",
+   "dur_short": false,
+   "ranges": [
+    [
+     2.6,
+     4.4,
+     1.0
+    ],
+    [
+     5.3,
+     6.3,
+     1.0
+    ],
+    [
+     6.3,
+     17.0,
+     8.0
+    ],
+    [
+     17.2,
+     21.0,
+     1.0
+    ]
+   ],
+   "caption": "Word, PowerPoint, Excel, PDF: formatting kept",
+   "focus": [
+    {
+     "t": 0,
+     "rect": [
+      100,
+      140,
+      1900,
+      1000
+     ],
+     "pad": 1.1
+    },
+    {
+     "t": 2.4,
+     "mark": "mark:window",
+     "pad": 1.3
+    }
+   ]
+  },
+  {
+   "id": "write",
+   "type": "clip",
+   "clip": "07-write",
+   "dur_short": false,
+   "ranges": [
+    [
+     0.9,
+     4.0,
+     2.0
+    ],
+    [
+     4.0,
+     7.0,
+     5.0
+    ],
+    [
+     7.0,
+     10.0,
+     1.0
+    ]
+   ],
+   "caption": "Fix grammar, improve, change the tone: all on your PC",
+   "focus": [
+    {
+     "t": 0,
+     "mark": "mark:window",
+     "pad": 1.3
+    },
+    {
+     "t": 2.2,
+     "mark": "mark:window",
+     "pad": 1.2
+    }
+   ]
+  },
+  {
+   "id": "offline",
+   "type": "clip",
+   "clip": "02-text",
+   "overlay": "wifi_off",
+   "ranges": [
+    [
+     16.5,
+     19.5,
+     1.0
+    ]
+   ],
+   "ranges_short": [
+    [
+     16.5,
+     19.1,
+     1.0
+    ]
+   ],
+   "caption": "No internet needed. Your text never leaves your PC.",
+   "focus": [
+    {
+     "t": 0,
+     "mark": "mark:window",
+     "pad": 1.3
+    }
+   ]
+  },
+  {
+   "id": "outro",
+   "type": "card",
+   "dur": 4.0,
+   "dur_short": 3.4,
+   "fade_out": false,
+   "lines": [
+    {
+     "text": "Owl-L",
+     "size": 0.09
+    },
+    {
+     "text": "Free · Open source · Windows",
+     "size": 0.045,
+     "bold": false,
+     "color": [
+      225,
+      215,
+      255
+     ]
+    },
+    {
+     "text": "github.com/Second-Dawn-Lab/owll",
+     "size": 0.05
+    },
+    {
+     "text": "Star it on GitHub",
+     "size": 0.04,
+     "bold": false,
+     "color": [
+      225,
+      215,
+      255
+     ]
+    }
+   ]
+  }
+ ],
+ "gif": {
+  "to_docs": true,
+  "segments": [
+   {
+    "clip": "02-text",
+    "ranges": [
+     [
+      2.4,
+      5.0,
+      2.0
+     ],
+     [
+      5.0,
+      6.0,
+      1.0
+     ],
+     [
+      6.0,
+      15.9,
+      12.0
+     ]
+    ],
+    "focus": [
+     {
+      "t": 0,
+      "mark": "mark:window",
+      "pad": 1.2
+     },
+     {
+      "t": 1.6,
+      "mark": "mark:window",
+      "pad": 1.12
+     }
+    ]
+   },
+   {
+    "clip": "05b-meeting",
+    "ranges": [
+     [
+      4.4,
+      5.5,
+      1.0
+     ],
+     [
+      5.5,
+      14.0,
+      2.4
+     ]
+    ],
+    "focus": [
+     {
+      "t": 0,
+      "rect": [
+       300,
+       90,
+       1436,
+       1181
+      ],
+      "pad": 1.05
+     },
+     {
+      "t": 1.0,
+      "rect": [
+       300,
+       560,
+       1436,
+       1181
+      ],
+      "pad": 1.1
+     }
+    ]
+   },
+   {
+    "clip": "04-capture",
+    "ranges": [
+     [
+      2.4,
+      4.8,
+      1.3
+     ],
+     [
+      4.8,
+      5.6,
+      1.0
+     ],
+     [
+      5.6,
+      12.1,
+      13.0
+     ],
+     [
+      12.1,
+      13.3,
+      1.0
+     ]
+    ],
+    "focus": [
+     {
+      "t": 0,
+      "rect": [
+       100,
+       140,
+       2400,
+       1000
+      ]
+     },
+     {
+      "t": 2.2,
+      "rect": [
+       100,
+       140,
+       2400,
+       1000
+      ]
+     },
+     {
+      "t": 3.0,
+      "mark": "mark:result",
+      "pad": 1.25
+     }
+    ]
+   }
+  ]
+ },
+ "thumbnail": {
+  "clip": "05b-meeting",
+  "at": 25.8,
+  "rect": [
+   300,
+   90,
+   1436,
+   1181
+  ],
+  "title": "Translate meeting captions, offline",
+  "sub": "Free · Open source · Windows"
+ }
+}

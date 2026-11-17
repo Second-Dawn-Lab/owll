@@ -1,0 +1,48 @@
+{
+  "_help": "The voice-over, one entry per scene id (see storyboard.json). 'text' is read in the 16:9 video, 'text_short' in the 9:16 and 1:1 videos (which are under 30 seconds). Edit the words and run: make-demo.ps1 -Steps render. Each scene lasts at least as long as its sentence, rounded up to whole bars of the music.",
+  "voice": "af_heart",
+  "speed": 1.04,
+  "lang": "en-us",
+  "scenes": {
+    "hook": {
+      "text": "A free translator that runs on your own PC.",
+      "text_short": "A translator that runs offline."
+    },
+    "text": {
+      "text": "Type, and it translates on your PC. No internet, no account.",
+      "text_short": "Type, and it translates on your PC."
+    },
+    "meeting": {
+      "text": "In a video call? Turn on captions, and Owl-L translates them live, speaker by speaker.",
+      "text_short": "Translate video call captions, live."
+    },
+    "popup": {
+      "text": "Select text anywhere, press Control C twice, and see the translation.",
+      "text_short": "Select text, press Control C twice."
+    },
+    "capture": {
+      "text": "Text in a picture or a video? Draw a box, and it is translated.",
+      "text_short": "Or translate text on the screen."
+    },
+    "live": {
+      "text": "Subtitles in a video? Translated live.",
+      "text_short": "Subtitles, translated live."
+    },
+    "docs": {
+      "text": "Translate Word, PowerPoint, Excel and PDF files. The formatting stays.",
+      "text_short": "Documents, with the formatting kept."
+    },
+    "write": {
+      "text": "Fix grammar or change the tone, with a small AI on your PC.",
+      "text_short": "Fix grammar, on your PC."
+    },
+    "offline": {
+      "text": "No internet needed. Nothing leaves your PC.",
+      "text_short": "No internet needed."
+    },
+    "outro": {
+      "text": "Owl-L. Free, open source, for Windows. Find it on GitHub.",
+      "text_short": "Owl-L. Free and open source. Find it on GitHub."
+    }
+  }
+}

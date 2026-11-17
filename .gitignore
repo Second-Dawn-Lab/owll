@@ -33,3 +33,8 @@ tools/convert-models/.venv/
 *.tar.gz
 *.7z
 *.safetensors
+
+# Demo media tooling (see media/README.md): dependencies stay local; recordings and videos live outside the repository
+/media/node_modules/
+/media/.venv/
+/media/py/__pycache__/

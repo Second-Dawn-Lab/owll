@@ -309,6 +309,13 @@ fn place_bar_for(app: &AppHandle, region: Region) {
 pub fn exclude_from_capture(window: &tauri::WebviewWindow) -> bool {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WINDOW_DISPLAY_AFFINITY};
+    // Demo recordings only: a build made with `--features demo-capture` (never an official release) leaves the bar and
+    // the picker visible in screen recordings when OWLL_DEMO_CAPTURE=1. See media/README.md. Without the feature this
+    // block is not compiled, so the environment variable does nothing.
+    #[cfg(feature = "demo-capture")]
+    if std::env::var_os("OWLL_DEMO_CAPTURE").is_some_and(|v| v == "1") {
+        return false;
+    }
     let Ok(hwnd) = window.hwnd() else { return false };
     // WDA_EXCLUDEFROMCAPTURE (0x11): Windows 10 version 2004 and later.
     unsafe { SetWindowDisplayAffinity(HWND(hwnd.0), WINDOW_DISPLAY_AFFINITY(0x11)).is_ok() }

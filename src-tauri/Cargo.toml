@@ -8,6 +8,10 @@ license.workspace = true
 [lib]
 name = "owll_lib"
 
+[features]
+# Not part of any official build. Lets demo recordings (media/) show the live caption bar: see media/README.md.
+demo-capture = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

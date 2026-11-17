@@ -1,0 +1,33 @@
+{
+  "_help": "Third-party files the audio steps download into work/ (never into a repository): where from, what they are, their license and a SHA-256 so a changed file is noticed.",
+  "music": {
+    "file": "music/special_spotlight.mp3",
+    "title": "Special Spotlight",
+    "author": "Kevin MacLeod",
+    "page": "https://incompetech.com/music/royalty-free/music.html",
+    "url": "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Special%20Spotlight.mp3",
+    "sha256": "16b75c5bc9788f90b587d2967ca8d63fdb2df8b2a433d0302ccba91010862184",
+    "license": "CC BY 4.0 (Creative Commons: By Attribution 4.0)",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "credit": "\"Special Spotlight\" Kevin MacLeod (incompetech.com). Licensed under Creative Commons: By Attribution 4.0. https://creativecommons.org/licenses/by/4.0/"
+  },
+  "tts_model": {
+    "file": "tts/kokoro-v1.0.onnx",
+    "title": "Kokoro-82M v1.0 (ONNX build by kokoro-onnx)",
+    "author": "hexgrad (model), thewh1teagle (ONNX export and kokoro-onnx, MIT)",
+    "page": "https://huggingface.co/hexgrad/Kokoro-82M",
+    "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+    "sha256": "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5",
+    "license": "Apache-2.0",
+    "license_url": "https://huggingface.co/hexgrad/Kokoro-82M"
+  },
+  "tts_voices": {
+    "file": "tts/voices-v1.0.bin",
+    "title": "Kokoro voice pack v1.0 (voice used: af_heart)",
+    "author": "hexgrad",
+    "page": "https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md",
+    "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+    "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
+    "license": "Apache-2.0 (same as the model; the voices are not voice clones, the training data was permissive or synthetic)"
+  }
+}

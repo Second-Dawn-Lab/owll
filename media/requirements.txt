@@ -1,0 +1,13 @@
+websocket-client==1.8.0
+pillow==11.1.0
+numpy==2.2.3
+python-docx==1.1.2
+kokoro-onnx==0.6.1
+onnxruntime==1.32.0
+espeakng-loader==0.2.4
+librosa==1.0.1
+numba==0.68.1
+scipy==1.18.1
+scikit-learn==1.9.1
+soundfile==0.14.0
+pymupdf==2.1

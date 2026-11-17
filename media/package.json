@@ -1,0 +1,9 @@
+{
+  "name": "owll-media",
+  "private": true,
+  "description": "Scripted demo recording and rendering for Owl-L (see README.md). Not part of the app.",
+  "dependencies": {
+    "ffmpeg-static": "5.2.0",
+    "ffprobe-static": "3.1.0"
+  }
+}
