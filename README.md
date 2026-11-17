@@ -12,6 +12,10 @@
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" />
 </p>
 
+<p align="center">
+  <img src="docs/images/demo.gif" alt="Short demo: typing English text and getting the German translation, live translation of the captions of a video call with the speaker names kept, and translating text from the screen" width="800" />
+</p>
+
 <h3 align="center"><a href="https://github.com/Second-Dawn-Lab/owll/releases/latest">⬇ Download Owl-L for Windows</a></h3>
 
 <p align="center">
@@ -172,6 +176,8 @@ Owl-L is an independent project and is not affiliated with any translation servi
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING](https://github.com/Second-Dawn-Lab/.github/blob/main/CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, follow [SECURITY.md](SECURITY.md).
+
+If Owl-L is useful to you, a ⭐ on GitHub helps others find it.
 
 <details>
 <summary><b>Build from source</b></summary>
