@@ -1,27 +1,19 @@
 {
   "name": "owll-promo-v2",
   "private": true,
-  "description": "Owl-L promo v2: motion design and 3D owl mascot (Remotion + React Three Fiber). Not part of the app.",
+  "description": "Owl-L promo v2: motion design with the cartoon owl artwork (Remotion). Not part of the app.",
   "scripts": {
-    "studio": "remotion studio src/index.ts",
-    "owl-preview": "remotion render src/index.ts OwlPreview ../../../media/out/v2/owl-preview.mp4 --gl=angle",
-    "style-frames": "node scripts/style-frames.mjs"
+    "studio": "remotion studio src/index.ts"
   },
   "dependencies": {
     "@fontsource/plus-jakarta-sans": "5.3.0",
-    "@gltf-transform/core": "4.2.1",
-    "@react-three/drei": "10.7.9",
-    "@react-three/fiber": "9.8.2",
     "@remotion/cli": "4.0.544",
-    "@remotion/three": "4.0.544",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "remotion": "4.0.544",
-    "three": "0.187.0"
+    "remotion": "4.0.544"
   },
   "devDependencies": {
     "@types/react": "19.3.0",
-    "@types/three": "0.187.0",
     "typescript": "5.9.3"
   }
 }

@@ -11,5 +11,7 @@
       "react-dom": ["./node_modules/@types/react-dom"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  // media/ is separate tooling (promo videos), not part of the app.
+  "exclude": ["media", "node_modules", "dist", "target"]
 }

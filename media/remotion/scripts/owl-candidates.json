@@ -1,7 +1,0 @@
-[
- {"id":"1-great-horned-owl","props":{"file":"owls/pp_fNkq9CwSG6d.glb","name":"Great horned owl","author":"Poly by Google","licence":"CC-BY 3.0","info":"894 triangles, static"}},
- {"id":"2-long-eared-owl","props":{"file":"owls/pp_dVPHzmMmXlg.glb","name":"Long eared owl","author":"Poly by Google","licence":"CC-BY 3.0","info":"1,594 triangles, static"}},
- {"id":"3-barn-owl","props":{"file":"owls/pp_7BGjfcacWkz.glb","name":"Barn owl","author":"Poly by Google","licence":"CC-BY 3.0","info":"1,682 triangles, static"}},
- {"id":"4-owl","props":{"file":"owls/pp_eoAo21aoZHJ.glb","name":"Owl","author":"Poly by Google","licence":"CC-BY 3.0","info":"1,520 triangles, static"}},
- {"id":"5-flying-owl","props":{"file":"owls/pp_LxDvGVarJ2.glb","name":"Flying owl (animated)","author":"Google Data Arts Team","licence":"CC-BY 3.0","info":"626 triangles, 1 animation (fly)"}}
-]

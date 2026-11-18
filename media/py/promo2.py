@@ -209,7 +209,7 @@ FONT
 
 TOOLS
   Remotion 4.0.544 (free licence: individuals and small companies), React, ffmpeg (ffmpeg-static 5.2.0), librosa (ISC), kokoro-onnx (MIT),
-  Pillow, NumPy, rembg (MIT; used only to prepare images of the photo-real prototype, not in the final videos).
+  Pillow, NumPy, SciPy.
 
 Everything shown on screen is made-up content.
 """, encoding="utf-8")
