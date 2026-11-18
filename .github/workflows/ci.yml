@@ -11,22 +11,22 @@ jobs:
     timeout-minutes: 60
     steps:
       # owll and dawn-core are checked out side by side, as on a developer machine.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: owll
       - name: Read the pinned dawn-core ref
         id: ref
         shell: bash
         run: echo "ref=$(grep -v '^#' owll/dawn-core.ref | grep -v '^[[:space:]]*$' | head -n1 | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Second-Dawn-Lab/dawn-core
           ref: ${{ steps.ref.outputs.ref }}
           path: dawn-core
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: owll/package.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable

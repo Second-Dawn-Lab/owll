@@ -55,7 +55,7 @@ jobs:
     env:
       TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           path: owll
@@ -103,15 +103,15 @@ jobs:
         run: |
           echo "::error title=dawn-core.ref is 'main'::Put a dawn-core commit SHA or tag in dawn-core.ref before releasing, so the build is reproducible."
           exit 1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Second-Dawn-Lab/dawn-core
           ref: ${{ steps.ref.outputs.ref }}
           path: dawn-core
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: owll/package.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
@@ -171,7 +171,7 @@ jobs:
       - name: Upload owll.exe for signing
         if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
         id: upload-exe
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: owll-exe-unsigned
           path: owll/target/release/owll.exe
@@ -209,7 +209,7 @@ jobs:
           installer=$(ls target/release/bundle/nsis/*-setup.exe | head -n1)
           mkdir -p unsigned-installer && cp "$installer" unsigned-installer/
           echo "installer=$installer" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
         id: upload-installer-artifact
         with:
