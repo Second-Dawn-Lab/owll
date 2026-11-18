@@ -16,6 +16,14 @@
   <img src="docs/images/demo.gif" alt="Short demo: typing English text and getting the German translation, live translation of the captions of a video call with the speaker names kept, and translating text from the screen" width="800" />
 </p>
 
+<div align="center">
+
+[![Watch the 1-minute video](docs/images/video-thumbnail.jpg)](https://youtu.be/vZZgm8lBeBQ)
+
+<sub>▶️ Watch the 1-minute video on YouTube · [Short version](https://youtube.com/shorts/HqpqCFxdRSE)</sub>
+
+</div>
+
 <h3 align="center"><a href="https://github.com/Second-Dawn-Lab/owll/releases/latest">⬇ Download Owl-L for Windows</a></h3>
 
 <p align="center">
