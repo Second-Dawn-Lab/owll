@@ -3,6 +3,13 @@
 All notable changes to Owl-L. The newest version is first. The text of a version's section is used
 as the release notes and shown in the in-app update notice.
 
+## [0.4.1](https://github.com/Second-Dawn-Lab/owll/compare/v0.4.0...v0.4.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **live:** keep scrolling captions in order and translate each one once ([61531dc](https://github.com/Second-Dawn-Lab/owll/commit/61531dcea1b84e7795fc41252a6f50300b894c0a))
+
 ## [0.4.0](https://github.com/Second-Dawn-Lab/owll/compare/v0.3.0...v0.4.0) (2026-11-13)
 
 
