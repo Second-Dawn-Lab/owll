@@ -173,3 +173,6 @@ Use a meeting (or play a recording of one) whose caption area shows several dial
 75. Two equal short answers ("Yes." and later "Yes." again) are two entries.
 76. Cover the caption area for a few seconds (another window), then show it again: the dialogs still on screen are not listed twice (very short ones of up to three words may be).
 77. Meeting captions set to Never, and rolling subtitles (a video with captions that scroll): the same checks, without speaker names.
+
+
+Release 0.4.1: checks 70–77 cover the caption scroll fix.
