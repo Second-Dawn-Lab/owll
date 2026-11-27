@@ -759,52 +759,9 @@ pub fn polish_translation(app: &AppHandle, from: &str, to: &str, text: &str, seg
     Ok(assemble(text, segments, &result.targets).0)
 }
 
-/// Live captions in Calm speed: polish one caption line when the model is already loaded and answers within the budget.
-/// The captions never wait for a load (it starts in the background for the next line), and a late answer is dropped, so
-/// latency stays the fast translation's plus at most `LIVE_BUDGET`.
-pub fn live_polish(app: &AppHandle, from: &str, to: &str, source: &str, draft: &str) -> Option<String> {
-    const LIVE_BUDGET: Duration = Duration::from_millis(2500);
-    let state = app.state::<AppState>();
-    let s = state.settings.lock().unwrap().clone();
-    if !s.live_polish || s.live_speed != "calm" || s.quality_mode == "off" || from == to {
-        return None;
-    }
-    let cfg = config_for_lang(&state, to);
-    usable(&state, &cfg).ok()?;
-    language_gate(&state, to).ok()?;
-    let quality = app.state::<Quality>();
-    if !quality.llm.is_loaded() {
-        // Load for the next line without holding up this one.
-        let app = app.clone();
-        std::thread::spawn(move || {
-            let q = app.state::<Quality>();
-            let cfg = config(&app.state::<AppState>());
-            let _ = q.llm.complete(&cfg, &dawn_llm::Prompt { user: "Reply with OK.".into(), max_tokens: 4 }, &AtomicBool::new(false));
-        });
-        return None;
-    }
-    let cancel = Arc::new(AtomicBool::new(false));
-    let watchdog = cancel.clone();
-    let done = Arc::new(AtomicBool::new(false));
-    let finished = done.clone();
-    std::thread::spawn(move || {
-        let t0 = Instant::now();
-        while t0.elapsed() < LIVE_BUDGET && !finished.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        watchdog.store(true, Ordering::Relaxed);
-    });
-    let terms: Vec<Term> = state.engine.glossary_terms_in(from, to, source).into_iter().map(|f| Term { source: f.term, found: f.found, target: f.target }).collect();
-    let tone = if tone_available(to) { parse_tone(&s.tone) } else { Tone::Automatic };
-    let req = tasks::PolishRequest { from, to, source, draft, draft_unclean: false, tone, terms: &terms };
-    let out = tasks::polish(&quality.llm, &cfg, &req, &cancel).ok();
-    done.store(true, Ordering::Relaxed);
-    out
-}
-
-/// Meeting captions: polish a finished utterance (all its sentences) in the background, when the model is loaded and
-/// answers within the budget. The fast translation was shown while the speaker spoke; this replaces it quietly.
-pub fn live_polish_utterance(app: &AppHandle, from: &str, to: &str, text: &str, segments: &[SegmentIo]) -> Option<String> {
+/// Live captions: polish a finished caption (all its sentences) in the background, when "Polish live captions too" is on, the
+/// model is loaded and it answers within the budget. The fast translation was shown meanwhile; this replaces it quietly.
+pub fn live_polish(app: &AppHandle, from: &str, to: &str, text: &str, segments: &[SegmentIo]) -> Option<String> {
     const BUDGET: Duration = Duration::from_secs(8);
     let state = app.state::<AppState>();
     let s = state.settings.lock().unwrap().clone();

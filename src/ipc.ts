@@ -322,13 +322,11 @@ export interface DictProgress {
   error: string | null;
 }
 
-/** One caption line: what was read and its translation. */
-export interface LiveLine {
-  original: string;
-  translation: string;
-}
-
-/** An utterance of a meeting (Teams, Zoom, Meet): sent again with the same id while the speaker talks, when it is over, and when its polished translation is ready. */
+/**
+ * A caption of a live session (an utterance of a meeting, or a sentence of plain subtitles, then without a speaker). Sent again
+ * with the same id while it grows, when it is over or corrected, and when its polished translation is ready. Ids grow in the
+ * order spoken.
+ */
 export interface LiveUtterance {
   id: number;
   speaker: string | null;
@@ -336,16 +334,6 @@ export interface LiveUtterance {
   translation: string;
   finished: boolean;
   polished: boolean;
-  from: string;
-  to: string;
-  ocrMs: number;
-  translateMs: number;
-}
-
-export interface LiveLines {
-  /** The first line is the last one shown before, now longer: it replaces it. */
-  replaceLast: boolean;
-  lines: LiveLine[];
   from: string;
   to: string;
   ocrMs: number;
@@ -636,7 +624,6 @@ export const ipc = {
   onLiveReset: (cb: (startedAt: number) => void) => on<number>("live-reset", cb),
   liveSaveText: (path: string, text: string) => call<void>("live_save_text", { path, text }),
   onShortcutDetected: (cb: (name: string) => void) => on<string>("shortcut-detected", cb),
-  onLiveLines: (cb: (d: LiveLines) => void) => on<LiveLines>("live-lines", cb),
   onLiveUtterance: (cb: (d: LiveUtterance) => void) => on<LiveUtterance>("live-utterance", cb),
   onLiveStatus: (cb: (d: LiveStatus) => void) => on<LiveStatus>("live-status", cb),
   onLiveCleared: (cb: () => void) => on<null>("live-cleared", cb),

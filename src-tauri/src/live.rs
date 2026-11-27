@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use dawn_capture::{Grabber, Region};
-use dawn_live::{interval_ms, BlackEvent, MeetingMode, MeetingUpdate, Pipeline, Speed};
+use dawn_live::{interval_ms, BlackEvent, CaptionUpdate, MeetingMode, Pipeline, Speed};
 use dawn_translate::{Detection, TranslateError, TranslateOptions};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl, WebviewWindowBuilder};
@@ -82,26 +82,9 @@ fn trace(msg: &str) {
 
 // --- events to the bar ---------------------------------------------------------
 
-#[derive(Serialize, Clone)]
-struct CaptionLine {
-    original: String,
-    translation: String,
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct LinesEvent {
-    replace_last: bool,
-    lines: Vec<CaptionLine>,
-    from: String,
-    to: String,
-    /// Time spent recognizing and translating, for the trace and the latency report.
-    ocr_ms: u64,
-    translate_ms: u64,
-}
-
-/// An utterance of a meeting: the speaker, what was said and its translation. Sent again with the same `id` whenever the
-/// speaker said more, when it is over (`finished`) and when the polished translation replaces the fast one (`polished`).
+/// One caption (an utterance of a meeting with its speaker, or a sentence of plain subtitles) and its translation. Sent again
+/// with the same `id` whenever more was said or its words were corrected, when it is over (`finished`) and when the polished
+/// translation replaces the fast one (`polished`). Ids grow in the order the captions were spoken.
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct UtteranceEvent {
@@ -396,9 +379,7 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
     let mut last_detected: Option<String> = None;
     let mut last_problem = Instant::now() - Duration::from_secs(60);
     let cancel = AtomicBool::new(false);
-    // Meeting captions: the last translation of every running utterance (a finished one is polished from it).
-    let mut utterances: std::collections::HashMap<u64, (String, String, dawn_translate::Translation)> = std::collections::HashMap::new();
-    let polishing = Arc::new(AtomicBool::new(false));
+    let mut captions = Captions::default();
     status(app, "running", vec![], "");
 
     while !control.stop.load(Ordering::Relaxed) {
@@ -413,6 +394,7 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
         }
         if control.reset.swap(false, Ordering::Relaxed) {
             pipeline.reset();
+            captions.forget();
         }
         let tick = Instant::now();
         let now_ms = started.elapsed().as_millis() as u64;
@@ -458,21 +440,9 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
             let _ = app.emit_to(LABEL, "live-cleared", ());
         }
         if !step.updates.is_empty() {
-            handle_utterances(app, control, &settings, step.updates, ocr_ms, &mut last_detected, &cancel, &mut utterances, &polishing);
-        }
-        let delta = step.delta;
-        if !delta.is_empty() {
-            let translate_started = Instant::now();
-            match translate_lines(app, control, &settings, &delta.lines, &mut last_detected, &cancel) {
-                Ok((from, to, lines)) => {
-                    let translate_ms = translate_started.elapsed().as_millis() as u64;
-                    trace(&format!("live: {} new line(s): read {ocr_ms} ms, translated {translate_ms} ms", lines.len()));
-                    let _ = app.emit_to(LABEL, "live-lines", LinesEvent { replace_last: delta.replace_last, lines, from, to, ocr_ms, translate_ms });
-                }
-                Err(Problem::Pack(language)) => status(app, "pack_missing", vec![language], ""),
-                Err(Problem::Undetected) => status(app, "undetected", vec![], ""),
-                Err(Problem::Other(message)) => status(app, "error", vec![], message),
-            }
+            // Finished captions are polished when that is on; plain subtitles only in Calm speed.
+            let polish = pipeline.meeting_active() || settings.live_speed == "calm";
+            handle_captions(app, control, &settings, step.updates, polish, ocr_ms, &mut last_detected, &cancel, &mut captions);
         }
 
         // The pause is the interval minus the time the pass already took; reading is what costs, so its time stretches the interval.
@@ -482,60 +452,127 @@ fn run(app: &AppHandle, id: u64, control: &Arc<Control>, region: Region) {
     }
 }
 
-/// Meeting captions: translate every change of an utterance at once (the speaker is still talking), and polish it when it is
-/// over. The speaker's name is a label: it is never part of the text that is translated.
+/// The most translations kept to answer for captions that come again with the same words.
+const REMEMBERED: usize = 128;
+
+/// A caption as it was last translated.
+struct Translated {
+    original: String,
+    from: String,
+    to: String,
+    translation: dawn_translate::Translation,
+    /// A polish of these words was started.
+    polish_asked: bool,
+}
+
+#[derive(Default)]
+struct Captions {
+    /// By caption id.
+    translated: std::collections::BTreeMap<u64, Translated>,
+    /// The words of every caption now, and their polished translation when it has arrived: a polish that took long must
+    /// not replace the translation of words that were corrected meanwhile.
+    current: Arc<Mutex<std::collections::BTreeMap<u64, (String, Option<String>)>>>,
+    polishing: Arc<AtomicBool>,
+}
+
+impl Captions {
+    /// The region or a language changed: translate afresh.
+    fn forget(&mut self) {
+        self.translated.clear();
+        self.current.lock().unwrap().clear();
+    }
+}
+
+/// Translate every new or changed caption at once (it may still be growing), and polish it when it is over. A caption that
+/// only moved or ended is not translated again. The speaker's name is a label: it is never part of the translated text.
 #[allow(clippy::too_many_arguments)]
-fn handle_utterances(
+fn handle_captions(
     app: &AppHandle,
     control: &Control,
     settings: &crate::settings::Settings,
-    updates: Vec<MeetingUpdate>,
+    updates: Vec<CaptionUpdate>,
+    polish: bool,
     ocr_ms: u64,
     last_detected: &mut Option<String>,
     cancel: &AtomicBool,
-    utterances: &mut std::collections::HashMap<u64, (String, String, dawn_translate::Translation)>,
-    polishing: &Arc<AtomicBool>,
+    captions: &mut Captions,
 ) {
+    let options = TranslateOptions { batch_size: 16, fast_beam: None, beam: if settings.live_speed == "fast" { 1 } else { 2 } };
     for update in updates {
-        if update.finished {
-            // Over: the fast translation stays on screen; polish it in the background when that is on.
-            if let Some((from, to, t)) = utterances.remove(&update.id) {
-                let _ = app.emit_to(LABEL, "live-utterance", UtteranceEvent { id: update.id, speaker: update.speaker.clone(), original: update.text.clone(), translation: t.text.clone(), finished: true, polished: false, from: from.clone(), to: to.clone(), ocr_ms, translate_ms: 0 });
-                if !polishing.swap(true, Ordering::SeqCst) {
-                    let (app, polishing) = (app.clone(), polishing.clone());
-                    std::thread::spawn(move || {
-                        let segments: Vec<crate::quality::SegmentIo> = t.segments.iter().map(|s| crate::quality::SegmentIo::new(&s.source, &s.input, &s.target, s.start, s.end, s.pinned, s.unclean)).collect();
-                        if let Some(better) = crate::quality::live_polish_utterance(&app, &from, &to, &t.text, &segments) {
-                            let _ = app.emit_to(LABEL, "live-utterance", UtteranceEvent { id: update.id, speaker: update.speaker, original: update.text, translation: better, finished: true, polished: true, from, to, ocr_ms: 0, translate_ms: 0 });
-                        }
-                        polishing.store(false, Ordering::SeqCst);
-                    });
+        let mut translate_ms = 0;
+        if captions.translated.get(&update.id).is_none_or(|t| t.original != update.text) {
+            let started = Instant::now();
+            match translate_one(app, control, settings, &update.text, &options, last_detected, cancel) {
+                Ok((from, to, translation)) => {
+                    translate_ms = started.elapsed().as_millis() as u64;
+                    trace(&format!("live: caption {} has {} chars: read {ocr_ms} ms, translated {translate_ms} ms", update.id, update.text.chars().count()));
+                    captions.current.lock().unwrap().insert(update.id, (update.text.clone(), None));
+                    captions.translated.insert(update.id, Translated { original: update.text.clone(), from, to, translation, polish_asked: false });
+                }
+                Err(Problem::Pack(language)) => {
+                    status(app, "pack_missing", vec![language], "");
+                    continue;
+                }
+                Err(Problem::Undetected) => {
+                    status(app, "undetected", vec![], "");
+                    continue;
+                }
+                Err(Problem::Other(message)) => {
+                    status(app, "error", vec![], message);
+                    continue;
                 }
             }
-            continue;
         }
-        let started = Instant::now();
-        let one = vec![update.text.clone()];
-        let options = TranslateOptions { batch_size: 16, fast_beam: None, beam: if settings.live_speed == "fast" { 1 } else { 2 } };
-        match translate_one(app, control, settings, &one, &options, last_detected, cancel) {
-            Ok((from, to, t)) => {
-                let translate_ms = started.elapsed().as_millis() as u64;
-                trace(&format!("live: utterance {} grew to {} chars: read {ocr_ms} ms, translated {translate_ms} ms", update.id, update.text.chars().count()));
-                let _ = app.emit_to(LABEL, "live-utterance", UtteranceEvent { id: update.id, speaker: update.speaker.clone(), original: update.text.clone(), translation: t.text.clone(), finished: false, polished: false, from: from.clone(), to: to.clone(), ocr_ms, translate_ms });
-                utterances.insert(update.id, (from, to, t));
-            }
-            Err(Problem::Pack(language)) => status(app, "pack_missing", vec![language], ""),
-            Err(Problem::Undetected) => status(app, "undetected", vec![], ""),
-            Err(Problem::Other(message)) => status(app, "error", vec![], message),
+        let Some(known) = captions.translated.get_mut(&update.id) else { continue };
+        let better = captions.current.lock().unwrap().get(&update.id).and_then(|(_, polished)| polished.clone());
+        let event = UtteranceEvent {
+            id: update.id,
+            speaker: update.speaker,
+            original: update.text,
+            polished: better.is_some(),
+            translation: better.unwrap_or_else(|| known.translation.text.clone()),
+            finished: update.finished,
+            from: known.from.clone(),
+            to: known.to.clone(),
+            ocr_ms,
+            translate_ms,
+        };
+        let _ = app.emit_to(LABEL, "live-utterance", event.clone());
+        // Over: the fast translation stays on screen; polish it in the background.
+        if event.finished && polish && !known.polish_asked && !captions.polishing.swap(true, Ordering::SeqCst) {
+            known.polish_asked = true;
+            let t = known.translation.clone();
+            let (app, polishing, current) = (app.clone(), captions.polishing.clone(), captions.current.clone());
+            std::thread::spawn(move || {
+                let segments: Vec<crate::quality::SegmentIo> = t.segments.iter().map(|s| crate::quality::SegmentIo::new(&s.source, &s.input, &s.target, s.start, s.end, s.pinned, s.unclean)).collect();
+                if let Some(better) = crate::quality::live_polish(&app, &event.from, &event.to, &t.text, &segments) {
+                    let still = match current.lock().unwrap().get_mut(&event.id) {
+                        Some((original, polished)) if *original == event.original => {
+                            *polished = Some(better.clone());
+                            true
+                        }
+                        _ => false,
+                    };
+                    if still {
+                        let _ = app.emit_to(LABEL, "live-utterance", UtteranceEvent { translation: better, polished: true, ocr_ms: 0, translate_ms: 0, ..event });
+                    }
+                }
+                polishing.store(false, Ordering::SeqCst);
+            });
+        }
+    }
+    while captions.translated.len() > REMEMBERED {
+        if let Some((id, _)) = captions.translated.pop_first() {
+            captions.current.lock().unwrap().remove(&id);
         }
     }
 }
 
-/// The language pair of this session for `lines` (detected when the source is "auto"), and the translation of the first one.
-fn translate_one(app: &AppHandle, control: &Control, settings: &crate::settings::Settings, lines: &[String], options: &TranslateOptions, last_detected: &mut Option<String>, cancel: &AtomicBool) -> Result<(String, String, dawn_translate::Translation), Problem> {
+/// The language pair of this session for `text` (detected when the source is "auto"), and its translation.
+fn translate_one(app: &AppHandle, control: &Control, settings: &crate::settings::Settings, text: &str, options: &TranslateOptions, last_detected: &mut Option<String>, cancel: &AtomicBool) -> Result<(String, String, dawn_translate::Translation), Problem> {
     let state = app.state::<AppState>();
-    let (from, to) = session_languages(app, control, settings, &lines.join(" "), last_detected)?;
-    match state.engine.translate_streaming(&lines[0], &from, &to, cancel, options, &mut |_| {}) {
+    let (from, to) = session_languages(app, control, settings, text, last_detected)?;
+    match state.engine.translate_streaming(text, &from, &to, cancel, options, &mut |_| {}) {
         Ok(t) => Ok((from, to, t)),
         Err(TranslateError::ModelMissing(language)) => Err(Problem::Pack(language)),
         Err(TranslateError::ModelLoad { model, .. }) => Err(Problem::Pack(state.catalog.language_for_model(&model).map(|l| l.code.clone()).unwrap_or_default())),
@@ -550,8 +587,6 @@ enum Problem {
     Other(String),
 }
 
-/// Translate the new lines, one by one (a line is one caption): the language is the one chosen in the bar, else the setting,
-/// else detected from the text; the target is never the source's own language.
 /// The source language of the session (the one chosen in the bar, else detected from `text`) and the target, which is never
 /// the source's own language.
 fn session_languages(app: &AppHandle, control: &Control, settings: &crate::settings::Settings, text: &str, last_detected: &mut Option<String>) -> Result<(String, String), Problem> {
@@ -572,27 +607,6 @@ fn session_languages(app: &AppHandle, control: &Control, settings: &crate::setti
     let wanted = control.target.lock().unwrap().clone();
     let to = crate::smart::smart_target(&from, &wanted, &settings.last_foreign_target);
     Ok((from, to))
-}
-
-fn translate_lines(app: &AppHandle, control: &Control, settings: &crate::settings::Settings, lines: &[String], last_detected: &mut Option<String>, cancel: &AtomicBool) -> Result<(String, String, Vec<CaptionLine>), Problem> {
-    let state = app.state::<AppState>();
-    let (from, to) = session_languages(app, control, settings, &lines.join(" "), last_detected)?;
-    let options = TranslateOptions { batch_size: 16, fast_beam: None, beam: if settings.live_speed == "fast" { 1 } else { 2 } };
-    let mut out = Vec::new();
-    for line in dawn_live::group_sentences(lines) {
-        let line = &line;
-        match state.engine.translate_streaming(line, &from, &to, cancel, &options, &mut |_| {}) {
-            Ok(t) => {
-                // Quality mode in Calm speed: a polished line when the model is ready and quick enough, else the fast one.
-                let translation = crate::quality::live_polish(app, &from, &to, line, &t.text).unwrap_or(t.text);
-                out.push(CaptionLine { original: line.clone(), translation });
-            }
-            Err(TranslateError::ModelMissing(language)) => return Err(Problem::Pack(language)),
-            Err(TranslateError::ModelLoad { model, .. }) => return Err(Problem::Pack(state.catalog.language_for_model(&model).map(|l| l.code.clone()).unwrap_or_default())),
-            Err(other) => return Err(Problem::Other(other.to_string())),
-        }
-    }
-    Ok((from, to, out))
 }
 
 // --- commands for the bar --------------------------------------------------------
@@ -796,7 +810,7 @@ mod live_sequence {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use dawn_live::{group_sentences, similarity, Pipeline};
+    use dawn_live::{similarity, Pipeline};
     use dawn_translate::{Ct2Engine, Ct2Options};
 
     use super::*;
@@ -858,7 +872,7 @@ foreach ($text in $scenes) {{
         let _ = engine.translate_streaming("Hello.", "en", "de", &cancel, &options, &mut |_| {});
 
         let mut pipeline = Pipeline::new();
-        let (mut originals, mut translations): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+        let (mut originals, mut translations): (Vec<(u64, String)>, Vec<String>) = (Vec::new(), Vec::new());
         let (mut translate_calls, mut reads) = (0, 0);
         let (mut ocr_total, mut translate_total) = (Duration::ZERO, Duration::ZERO);
         let (mut latency_ms, mut last_change_at) = (Vec::new(), 0u64);
@@ -876,15 +890,19 @@ foreach ($text in $scenes) {{
                 ocr_total += started.elapsed();
                 out
             });
-            for group in group_sentences(&step.delta.lines) {
+            for update in step.updates {
+                // A caption that only ended is not translated again.
+                if originals.iter().any(|(id, text): &(u64, String)| *id == update.id && *text == update.text) {
+                    continue;
+                }
                 let started = Instant::now();
                 translate_calls += 1;
-                let t = engine.translate_streaming(&group, "en", "de", &cancel, &options, &mut |_| {}).unwrap();
+                let t = engine.translate_streaming(&update.text, "en", "de", &cancel, &options, &mut |_| {}).unwrap();
                 translate_total += started.elapsed();
                 // From the picture that completed the caption to its translation: the looks until it was stable, plus the work.
                 latency_ms.push(now_ms - last_change_at + started.elapsed().as_millis() as u64);
-                println!("look {i:>2} (t={now_ms:>5} ms): {group:?} -> {:?}", t.text);
-                originals.push(group);
+                println!("look {i:>2} (t={now_ms:>5} ms): {:?} -> {:?}", update.text, t.text);
+                originals.push((update.id, update.text));
                 translations.push(t.text);
             }
         }
@@ -896,11 +914,11 @@ foreach ($text in $scenes) {{
             translate_calls,
             wall.elapsed().as_secs_f64()
         );
-        assert_eq!(translate_calls, EXPECTED.len(), "each line is translated once: {originals:?}");
-        for (got, want) in originals.iter().zip(EXPECTED) {
+        assert_eq!(translate_calls, EXPECTED.len(), "each caption is translated once: {originals:?}");
+        for ((_, got), want) in originals.iter().zip(EXPECTED) {
             assert!(similarity(got, want) >= 0.85, "{got:?} is not {want:?}");
         }
-        assert!(translations.iter().zip(&originals).all(|(t, o)| !t.trim().is_empty() && t != o), "{translations:?}");
+        assert!(translations.iter().zip(&originals).all(|(t, (_, o))| !t.trim().is_empty() && t != o), "{translations:?}");
         assert!(reads < SEQUENCE.len(), "pictures that did not change were not read again");
     }
 }

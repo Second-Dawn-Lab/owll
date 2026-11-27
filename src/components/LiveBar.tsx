@@ -2,10 +2,10 @@ import { useSettings } from "@seconddawn/settings";
 import { Button, Checkbox, Icon, IconButton } from "@seconddawn/ui";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { languageName, useT } from "../i18n";
-import { ipc, type LiveLine, type LiveStatus } from "../ipc";
+import { ipc, type LiveStatus } from "../ipc";
 import { settingsStore } from "../settings/store";
 import { LanguagePicker } from "./LanguagePicker";
-import { addLines, choiceToRemember, clock, decideSave, speakerPrefix, timeRange, transcriptText, upsertUtterance, type Caption } from "./liveLines";
+import { choiceToRemember, clock, decideSave, speakerPrefix, timeRange, transcriptText, upsertUtterance, type Caption } from "./liveLines";
 import { atBottom, endOf, initialScroll, jump, onLines, onScroll, showJump, type ScrollState } from "./scrollModel";
 import { usePacks } from "./usePacks";
 
@@ -65,13 +65,6 @@ export function LiveBar() {
       if (s.startedAt) setStartedAt(s.startedAt);
     });
     const offs = [
-      ipc.onLiveLines((e) => {
-        live.current.from = e.from;
-        live.current.to = e.to;
-        setCaptions((list) => addLines(list, e.lines as LiveLine[], e.replaceLast));
-        setScroll((s) => onLines(s, e.replaceLast ? Math.max(0, e.lines.length - 1) : e.lines.length));
-        setStatus((s) => (s.state === "running" || s.state === "no_text" ? s : { state: "running", languages: [], message: "" }));
-      }),
       ipc.onLiveUtterance((u) => {
         live.current.from = u.from;
         live.current.to = u.to;

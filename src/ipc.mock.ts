@@ -158,7 +158,7 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, unknown> = {}
         let n = 0;
         const timer = setInterval(() => {
           n++;
-          emit("live-lines", { replaceLast: false, lines: [{ original: `This is caption number ${n}, and it is a little longer.`, translation: `Das ist Untertitel Nummer ${n}, und er ist etwas länger.` }], from: "en", to: "de", ocrMs: 80, translateMs: 120 });
+          emit("live-utterance", { id: n, speaker: null, original: `This is caption number ${n}, and it is a little longer.`, translation: `Das ist Untertitel Nummer ${n}, und er ist etwas länger.`, finished: true, polished: false, from: "en", to: "de", ocrMs: 80, translateMs: 120 });
           if (n >= 40) clearInterval(timer);
         }, 600);
       }

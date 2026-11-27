@@ -55,7 +55,7 @@ Run on the installer from the draft release, on a clean Windows user profile if 
 
 ## I. Live captions
 
-28. Live captions, Calm speed, with "Polish live captions too" on: captions appear as fast as before; after the first line (which warms the model up) polished lines replace fast ones when the model answers within 2.5 seconds. With Normal or Fast speed nothing changes.
+28. Live captions, Calm speed, with "Polish live captions too" on: captions appear as fast as before; after the first finished line (which warms the model up) polished lines replace fast ones a little after each line is over, when the model answers within 8 seconds. With Normal or Fast speed, plain subtitles are not polished.
 
 ## J. Speed (record the numbers)
 
@@ -100,7 +100,7 @@ Run on the installer from the draft release, on a clean Windows user profile if 
 44. Copy all, Export and a saved session contain "Name: translated text".
 45. Calm, Normal and Fast: the translation follows the speaker; note how long after a new word appears the translation changes (measured with synthetic captions: Fast about 0.3 s, Normal about 0.5 s, Calm about 0.5 s).
 46. With "Polish live captions too" on: a finished utterance (the speaker changed or paused) is replaced quietly by its polished translation when the model is loaded and keeps up; the first utterance only loads the model.
-47. Plain subtitles (a film) with Meeting captions on Automatic behave as before (lines appear when stable).
+47. Plain subtitles (a film) with Meeting captions on Automatic: lines appear when stable, a sentence on two screen lines is one entry, and a caption that keeps growing is shown after about 1.5 seconds at the latest.
 
 ## L. Second round of fixes
 
@@ -160,3 +160,16 @@ Run on the installer from the draft release, on a clean Windows user profile if 
 67. The same with Quality mode on: the result says Polished and starts with `Ich bin Ali` (or `Ich heiße Ali`), never `Im Ali`.
 68. `i dont know what u mean` gives a normal translation ("Ich weiß nicht, was du meinst"). Same in the quick popup, in a document and in live captions.
 69. Must stay as typed: German to English `Im Wald`; `Im Chang-min`; an `IM` abbreviation; a URL such as `www.example.com/u/im`; code in backticks; a glossary term such as `dont panic` (the term is replaced by its translation as before).
+
+## O. Captions scroll up (v0.4.1)
+
+Use a meeting (or play a recording of one) whose caption area shows several dialogs at once, and draw the region around **all** of them. Try Fast, Normal and Calm.
+
+70. Speak or play until the area is full and dialogs scroll up and out at the top. The caption bar and the conversation view list every dialog **once**, oldest above, newest at the bottom, each with its speaker. No old dialog appears again below a newer one.
+71. Watch a dialog that only moves up: its translation does not change or flicker.
+72. Only the newest line grows. A dialog that wraps onto two screen lines is one entry with one translation; two speakers (or two dialogs of one speaker) are never joined.
+73. When the app corrects the last words of a dialog that has just moved up, that entry changes in place; no new entry appears.
+74. Dialogs that left the area at the top stay in the conversation view, in the saved session and in the export, in the order spoken.
+75. Two equal short answers ("Yes." and later "Yes." again) are two entries.
+76. Cover the caption area for a few seconds (another window), then show it again: the dialogs still on screen are not listed twice (very short ones of up to three words may be).
+77. Meeting captions set to Never, and rolling subtitles (a video with captions that scroll): the same checks, without speaker names.

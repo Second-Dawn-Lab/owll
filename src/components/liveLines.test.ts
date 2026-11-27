@@ -1,32 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { addLines, choiceToRemember, decideSave, MAX_LINES, speakerPrefix, timeRange, transcriptText, upsertUtterance } from "./liveLines";
+import { choiceToRemember, decideSave, MAX_LINES, speakerPrefix, timeRange, transcriptText, upsertUtterance } from "./liveLines";
+import type { Caption } from "./liveLines";
 import { atBottom, endOf, initialScroll, jump, onLines, onScroll, showJump } from "./scrollModel";
 
-const line = (n: number) => ({ original: `orig ${n}`, translation: `trans ${n}` });
+const line = (n: number) => ({ id: n, speaker: null, original: `orig ${n}`, translation: `trans ${n}`, finished: false, polished: false, from: "en", to: "de", ocrMs: 0, translateMs: 0 });
+const add = (list: Caption[], ids: number[], now: number) => ids.reduce((all, n) => upsertUtterance(all, line(n), now), list);
 
 describe("the conversation of a session", () => {
   it("keeps every line with the time it appeared, oldest first", () => {
-    const list = addLines(addLines([], [line(1), line(2)], false, 1000), [line(3)], false, 2000);
+    const list = add(add([], [1, 2], 1000), [3], 2000);
     expect(list.map((c) => [c.translation, c.at])).toEqual([["trans 1", 1000], ["trans 2", 1000], ["trans 3", 2000]]);
   });
 
-  it("a caption that grew replaces its earlier line and keeps that line's time and place", () => {
-    const first = addLines([], [line(1), line(2)], false, 1000);
-    const list = addLines(first, [{ original: "orig 2 longer", translation: "trans 2 longer" }], true, 5000);
-    expect(list.map((c) => c.translation)).toEqual(["trans 1", "trans 2 longer"]);
-    expect(list[1]).toMatchObject({ at: 1000, id: first[1].id });
+  it("a correction of an earlier caption changes its line and keeps that line's time and place", () => {
+    const first = add([], [1, 2], 1000);
+    const list = upsertUtterance(first, { ...line(1), translation: "trans 1 corrected", finished: true }, 5000);
+    expect(list.map((c) => c.translation)).toEqual(["trans 1 corrected", "trans 2"]);
+    expect(list[0]).toMatchObject({ at: 1000, id: first[0].id });
+  });
+
+  it("keeps the order in which the captions were spoken, also when an earlier one arrives late", () => {
+    const list = add(add([], [1, 3], 1000), [2], 2000);
+    expect(list.map((c) => c.translation)).toEqual(["trans 1", "trans 2", "trans 3"]);
+    // Meeting ids start above the plain ones without being put before them.
+    const plain = 2 ** 32 + 1;
+    expect(add(add([], [plain], 1000), [1], 2000).map((c) => c.utterance)).toEqual([plain, 1]);
   });
 
   it("keeps up to two thousand lines and drops the oldest", () => {
-    let list = addLines([], [], false);
-    for (let i = 0; i < MAX_LINES + 50; i++) list = addLines(list, [line(i)], false, i);
+    let list: Caption[] = [];
+    for (let i = 0; i < MAX_LINES + 50; i++) list = add(list, [i], i);
     expect(list).toHaveLength(MAX_LINES);
     expect(list[0].translation).toBe("trans 50");
     expect(list[MAX_LINES - 1].translation).toBe(`trans ${MAX_LINES + 49}`);
   });
 
   it("writes a transcript with the time, the translation and the original under it", () => {
-    const list = addLines([], [line(1), line(2)], false, new Date(2026, 0, 1, 14, 5, 9).getTime());
+    const list = add([], [1, 2], new Date(2026, 0, 1, 14, 5, 9).getTime());
     expect(transcriptText(list, "en")).toBe("[14:05:09] trans 1\n  (orig 1)\n\n[14:05:09] trans 2\n  (orig 2)\n");
     expect(transcriptText([], "en")).toBe("");
     // The lines of a saved session use `t` for the time.

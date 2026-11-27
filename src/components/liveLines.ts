@@ -1,16 +1,18 @@
 // The conversation of a live session: every line with the time it appeared (up to 2,000 in memory), the text of a transcript,
 // and what to do with the conversation when the session ends.
 
-import type { LiveLine, LiveUtterance } from "../ipc";
+import type { LiveUtterance } from "../ipc";
 
-export interface Caption extends LiveLine {
+export interface Caption {
+  original: string;
+  translation: string;
   id: number;
   /** Unix time in milliseconds when the line appeared. */
   at: number;
-  /** Meeting captions: the speaker (a label, never translated) and the backend's id of the utterance. */
+  /** The speaker of a meeting caption (a label, never translated) and the backend's id of the caption. */
   speaker?: string | null;
   utterance?: number;
-  /** The speaker is still talking: the translation grows. */
+  /** Still being spoken: the translation grows. */
   growing?: boolean;
   polished?: boolean;
 }
@@ -20,19 +22,13 @@ export const MAX_LINES = 2000;
 
 let nextId = 1;
 
-/** Add the new lines of an update; `replaceLast` swaps the last line for the first new one (the caption grew, keeping its time). */
-export function addLines(list: Caption[], lines: LiveLine[], replaceLast: boolean, now: number = Date.now()): Caption[] {
-  if (lines.length === 0) return list;
-  const replaced = replaceLast ? list[list.length - 1] : undefined;
-  const base = replaceLast ? list.slice(0, -1) : list;
-  const added = lines.map((l, i) => ({ ...l, id: i === 0 && replaced ? replaced.id : nextId++, at: i === 0 && replaced ? replaced.at : now }));
-  const all = [...base, ...added];
-  return all.length > MAX_LINES ? all.slice(all.length - MAX_LINES) : all;
-}
+/** Ids of one kind of caption (meeting or plain) grow in the order spoken; the two kinds are counted apart. */
+const kind = (id: number) => Math.floor(id / 2 ** 32);
 
 /**
- * An utterance of a meeting: a new line the first time, the same line (keeping its time) while it grows, when it ends and
- * when its polished translation arrives. A late event of an older utterance never creates a second line.
+ * A caption (an utterance of a meeting, or a sentence of plain subtitles): a new line the first time, the same line (keeping
+ * its time and place) while it grows, when it ends, when it is corrected and when its polished translation arrives. A new line
+ * goes where it was spoken: above any line of a later caption, else at the end.
  */
 export function upsertUtterance(list: Caption[], u: LiveUtterance, now: number = Date.now()): Caption[] {
   const line: Omit<Caption, "id" | "at"> = { original: u.original, translation: u.translation, speaker: u.speaker, utterance: u.id, growing: !u.finished, polished: u.polished };
@@ -42,7 +38,9 @@ export function upsertUtterance(list: Caption[], u: LiveUtterance, now: number =
     next[at] = { ...next[at], ...line };
     return next;
   }
-  const all = [...list, { ...line, id: nextId++, at: now }];
+  const later = list.findIndex((c) => c.utterance !== undefined && kind(c.utterance) === kind(u.id) && c.utterance > u.id);
+  const all = list.slice();
+  all.splice(later < 0 ? all.length : later, 0, { ...line, id: nextId++, at: later < 0 ? now : list[later].at });
   return all.length > MAX_LINES ? all.slice(all.length - MAX_LINES) : all;
 }
 
